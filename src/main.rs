@@ -5,7 +5,6 @@ mod signer;
 mod utils;
 // ---
 use clap::Parser;
-use sha3::{Digest, Keccak256, Keccak512};
 // ---
 use crate::signer::Signer;
 use lamport_signer::LamportSigner;
@@ -13,13 +12,22 @@ use lamport_signer::LamportSigner;
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
-struct Args {}
+struct Args {
+    /// PRNG seed
+    #[clap(short, long, default_value_t = 42)]
+    seed: u64,
+}
 
 fn main() {
-    let _args = Args::parse();
+    let args = Args::parse();
 
-    let small_hash = Keccak256::new();
-    let large_hash = Keccak512::new();
+    let signer = LamportSigner::new(args.seed);
 
-    let _signer = LamportSigner::new(small_hash, large_hash);
+	let msg = b"Hello, world!";
+	let (priv_key, pub_key) = signer.gen_key_pair();
+
+	let packet = signer.sign(msg, priv_key);
+
+	let is_ok = signer.verify(&packet.sign, pub_key);
+	println!("is_ok: {}", is_ok);
 }

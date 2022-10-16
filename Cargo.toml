@@ -1,6 +1,6 @@
 [package]
 edition = "2021"
-name = "crypto-rs"
+name = "horsigner"
 version = "0.1.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -8,3 +8,5 @@ version = "0.1.0"
 [dependencies]
 clap = {version = "3.2", features = ["derive"]}
 sha3 = "0.10"
+rand_chacha = "0.3"
+rand_core = "0.6" 
