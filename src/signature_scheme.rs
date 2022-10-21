@@ -1,8 +1,14 @@
+use std::boxed::Box;
 use std::fmt::Debug;
 use std::vec::Vec;
 // ---
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use sha3::Digest;
+
+pub struct KeyPair<GPrivateKey, GPublicKey> {
+    pub private: GPrivateKey,
+    pub public: GPublicKey,
+}
 
 pub struct SignedBlock {
     pub data: Vec<u8>,
@@ -20,7 +26,9 @@ pub trait Key
 where
     Self: Sized,
 {
-    fn new() -> Self
+    type CsRng: CryptoRng + SeedableRng + RngCore;
+    // ---
+    fn new(rng: &mut Self::CsRng) -> Self
     where
         Self: Sized;
     fn data(&self) -> &[u8];
@@ -50,16 +58,15 @@ where
     }
 }
 
-pub trait Signer<
-    GLargeHash: Digest,
-    GSmallHash: Digest,
-    GPrivateKey: PrivateKey,
-    GPublicKey: PublicKey,
-    GCsrng: CryptoRng + SeedableRng + RngCore,
->
-{
+pub trait SignatureScheme {
+    type CsRng: CryptoRng + SeedableRng + RngCore;
+    type LargeHash: Digest;
+    type SmallHash: Digest;
+    type PrivateKey: PrivateKey;
+    type PublicKey: PublicKey;
+
     fn new(seed: u64) -> Self;
-    fn sign(&self, msg: &[u8], priv_key: GPrivateKey) -> SignedBlock;
-    fn verify(&self, signature: &[u8], pub_key: GPublicKey) -> bool;
-    fn gen_key_pair(&self) -> (GPrivateKey, GPublicKey);
+    fn sign(&mut self, msg: &[u8], priv_key: &Self::PrivateKey) -> Box<SignedBlock>;
+    fn verify(&self, signature: &[u8], pub_key: &Self::PublicKey) -> bool;
+    fn gen_key_pair(&mut self) -> Box<KeyPair<Self::PrivateKey, Self::PublicKey>>;
 }
