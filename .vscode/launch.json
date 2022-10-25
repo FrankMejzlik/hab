@@ -7,15 +7,15 @@
 		{
 			"type": "lldb",
 			"request": "launch",
-			"name": "Debug executable 'horsigner'",
+			"name": "Debug executable 'hashsig'",
 			"cargo": {
 				"args": [
 					"build",
-					"--bin=horsigner",
-					"--package=horsigner"
+					"--bin=hashsig",
+					"--package=hashsig"
 				],
 				"filter": {
-					"name": "horsigner",
+					"name": "hashsig",
 					"kind": "bin"
 				}
 			},
@@ -25,16 +25,16 @@
 		{
 			"type": "lldb",
 			"request": "launch",
-			"name": "Debug unit tests in executable 'horsigner'",
+			"name": "Debug unit tests in executable 'hashsig'",
 			"cargo": {
 				"args": [
 					"test",
 					"--no-run",
-					"--bin=horsigner",
-					"--package=horsigner"
+					"--bin=hashsig",
+					"--package=hashsig"
 				],
 				"filter": {
-					"name": "horsigner",
+					"name": "hashsig",
 					"kind": "bin"
 				}
 			},

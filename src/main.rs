@@ -3,6 +3,10 @@ mod signature_scheme;
 mod utils;
 // ---
 use clap::Parser;
+use log::debug;
+use simple_logger::SimpleLogger;
+use hex::{decode, encode};
+use sha3::{Digest, Keccak256};
 // ---
 use crate::signature_scheme::SignatureScheme;
 use lamport_signature_scheme::LamportSignatureScheme;
@@ -17,7 +21,17 @@ struct Args {
 }
 
 fn main() {
+    SimpleLogger::new().init().unwrap();
     let args = Args::parse();
+
+	let byte_str_orig = "7848b5d711bc9883996317a3f9c90269d56771005d540a19184939c9e8d0db2a";
+	let bytes = decode(byte_str_orig).unwrap();
+	let hashed_bytes = Keccak256::digest(bytes);
+	let hashed_str = encode(hashed_bytes);
+	println!("byte_str_orig: {}", byte_str_orig);
+	println!("hashed: {}", hashed_str);
+
+	
 
     let msg = b"Hello, world!";
 
@@ -29,12 +43,17 @@ fn main() {
     // Alice signs
     //
     let alice_key_pair = alice_signer.gen_key_pair();
+    debug!(
+        "alice_key_pair:\npriv:\n{}\npub:\n{}",
+        alice_key_pair.private, alice_key_pair.public
+    );
     let alice_packet = alice_signer.sign(msg, &alice_key_pair.private);
 
     //
     // Eve attacker signs
     //
     let eve_key_pair = eve_signer.gen_key_pair();
+    debug!("{}", eve_key_pair);
     let eve_packet = eve_signer.sign(msg, &eve_key_pair.private);
 
     //

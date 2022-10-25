@@ -1,6 +1,7 @@
 use std::boxed::Box;
 use std::fmt::Debug;
 use std::vec::Vec;
+use std::fmt::{Display};
 // ---
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use sha3::Digest;
@@ -24,9 +25,10 @@ impl SignedBlock {
 
 pub trait Key
 where
-    Self: Sized,
+    Self: Sized + Display,
 {
     type CsRng: CryptoRng + SeedableRng + RngCore;
+	type Hash: Digest;
     // ---
     fn new(rng: &mut Self::CsRng) -> Self
     where
