@@ -4,13 +4,11 @@ mod signature_scheme;
 mod utils;
 // ---
 use clap::Parser;
-use hex::{decode, encode};
+use hex::encode;
 use log::debug;
-use sha3::{Digest, Sha3_256 };
+use sha3::{Digest, Sha3_256};
 use simple_logger::SimpleLogger;
 // ---
-use crate::signature_scheme::SignatureScheme;
-use lamport_signature_scheme::LamportSignatureScheme;
 use merkle_tree::MerkleTree;
 
 /// Simple program to greet a person
@@ -26,15 +24,20 @@ fn main() {
     SimpleLogger::new().init().unwrap();
     let _args = Args::parse();
 
-    const T: usize = 4;
-	const BLOCK_SIZE: usize = 32;
+    const T: usize = 256;
+    const BLOCK_SIZE: usize = 32;
 
-    let leaves: Vec<[u8;BLOCK_SIZE]> = (0usize..T)
-        .map(|i| Sha3_256::digest(i.to_le_bytes()).try_into().unwrap())
+    let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect());
+    let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
+        .into_iter()
+        .map(|i| Sha3_256::digest(i).try_into().unwrap())
         .collect();
+    for l in leaves.iter() {
+        print!("{}", encode(l));
+    }
 
     let tree = MerkleTree::construct::<Sha3_256>(leaves);
-	debug!("{}", tree);
+    debug!("{}", tree);
 
     // return;
     // let byte_str_orig = "7848b5d711bc9883996317a3f9c90269d56771005d540a19184939c9e8d0db2a";

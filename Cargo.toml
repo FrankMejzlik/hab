@@ -16,5 +16,6 @@ log = { version = "0.4", features = [
 ] }
 simple_logger = { version = "*" }
 hex = "0.4"
+byteorder = "1.4"
 
 [features]

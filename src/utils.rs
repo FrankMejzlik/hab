@@ -1,1 +1,100 @@
+// ---
+use hex::{decode, encode};
+use log::debug;
 
+/// Formats the given bytes as a lowercase hex String and returns it.
+pub fn to_hex(buffer: &[u8]) -> String {
+    encode(buffer)
+}
+
+pub fn from_hex(hex_bytes: &str) -> Result<Vec<u8>, String> {
+    match decode(hex_bytes) {
+        Ok(x) => Ok(x),
+        Err(e) => Err(format!("{}", e)),
+    }
+}
+
+pub fn gen_byte_blocks_from<const BLOCK_SIZE: usize>(cont: &Vec<u64>) -> Vec<[u8; BLOCK_SIZE]> {
+    let mut result = vec![];
+    for item in cont.into_iter() {
+        let mut bs = item.to_le_bytes();
+
+        let mut arr = [0x0; BLOCK_SIZE];
+
+        debug!("PRE: arr: {}", to_hex(&arr));
+        (&mut arr[0..std::mem::size_of::<u64>()]).copy_from_slice(&mut bs);
+        debug!("POST: arr: {}", to_hex(&arr));
+        result.push(arr);
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+    //< Alias `debug` as `println`
+    #[allow(unused_imports)]
+    use std::println as debug;
+    // ---
+    use byteorder::{NativeEndian, ReadBytesExt};
+    // ---
+    use crate::utils;
+
+    #[test]
+    fn test_from_hex() {
+        // Empty bytes
+        let bytes_empty_hex = String::from("");
+        let act_bytes_empty_hex = utils::from_hex(&bytes_empty_hex).unwrap();
+        let exp_bytes_empty_hex = vec![];
+
+        // Non-empty bytes
+        let bytes_hex = String::from("deadbeef");
+        let act_bytes_hex = utils::from_hex(&bytes_hex).unwrap();
+        let exp_bytes_hex = vec![0xDE, 0xAD, 0xBE, 0xEF];
+
+        assert_eq!(act_bytes_empty_hex, exp_bytes_empty_hex);
+        assert_eq!(act_bytes_hex, exp_bytes_hex);
+    }
+
+    #[test]
+    fn test_to_hex() {
+        // Empty bytes
+        let bytes_empty = b"";
+        let act_bytes_empty_hex = utils::to_hex(bytes_empty);
+        let exp_bytes_empty_hex = String::from("");
+
+        // Non-empty bytes
+        let bytes_nonempty_0 = [0xDE, 0xAD, 0xBE, 0xEF];
+        let act_bytes_nonempty_0_hex = utils::to_hex(&bytes_nonempty_0);
+        let exp_bytes_nonempty_0_hex = String::from("deadbeef");
+
+        assert_eq!(act_bytes_empty_hex, exp_bytes_empty_hex);
+        assert_eq!(act_bytes_nonempty_0_hex, exp_bytes_nonempty_0_hex);
+    }
+
+    #[test]
+    fn test_gen_byte_blocks_from() {
+        const NUM_NUMBERS: usize = 8;
+        const BLOCK_SIZE: usize = 32;
+
+        let numbers = (0_u64..NUM_NUMBERS as u64).collect();
+        debug!("numbers: {:?}", numbers);
+        let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&numbers);
+        for (ex_num, num) in leaf_numbers.into_iter().enumerate() {
+            let mut cursor = Cursor::new(num);
+            let num_0 = cursor.read_u64::<NativeEndian>().unwrap();
+            let num_1 = cursor.read_u64::<NativeEndian>().unwrap();
+            let num_2 = cursor.read_u64::<NativeEndian>().unwrap();
+            let num_3 = cursor.read_u64::<NativeEndian>().unwrap();
+
+            debug!("[{}] \t -> 0x{}", ex_num, utils::to_hex(&num));
+
+            assert_eq!(num.len(), BLOCK_SIZE);
+            assert_eq!(num_0, ex_num as u64);
+            assert_eq!(num_1, 0);
+            assert_eq!(num_2, 0);
+            assert_eq!(num_3, 0);
+        }
+    }
+}

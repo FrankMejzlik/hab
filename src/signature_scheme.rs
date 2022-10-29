@@ -1,7 +1,7 @@
 use std::boxed::Box;
 use std::fmt::Debug;
+use std::fmt::Display;
 use std::vec::Vec;
-use std::fmt::{Display};
 // ---
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use sha3::Digest;
@@ -28,7 +28,7 @@ where
     Self: Sized + Display,
 {
     type CsRng: CryptoRng + SeedableRng + RngCore;
-	type Hash: Digest;
+    type Hash: Digest;
     // ---
     fn new(rng: &mut Self::CsRng) -> Self
     where
