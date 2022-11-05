@@ -2,11 +2,11 @@ use std::boxed::Box;
 use std::fmt::{Display, Formatter, Result};
 use std::io::Cursor;
 // ---
+use bitreader::BitReader;
 use hex::encode;
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, SeedableRng};
 use sha3::{Digest, Keccak256, Keccak512};
-use bitreader::BitReader;
 // ---
 use crate::box_array;
 use crate::merkle_tree::MerkleTree;
@@ -102,9 +102,9 @@ impl HorstSecretKey {
         HorstSecretKey { data }
     }
 
-	fn get(&self, idx: usize) -> SkHashBlock {
-		self.data[idx]
-	}
+    fn get(&self, idx: usize) -> SkHashBlock {
+        self.data[idx]
+    }
 }
 
 impl Display for HorstSecretKey {
@@ -189,11 +189,12 @@ impl SignatureScheme for HorstSigScheme {
 
     fn new(seed: u64) -> Self {
         // TODO: Check the matching sizes of hashes and parameters
-		assert!(TAU < 64, "TAU must be less than 64 bits.");
+        assert!(TAU < 64, "TAU must be less than 64 bits.");
 
-		assert!((MSG_HASH_SIZE * 8) % TAU == 0, 
-			"The output size of a message hash function must be multiple of TAU");
-
+        assert!(
+            (MSG_HASH_SIZE * 8) % TAU == 0,
+            "The output size of a message hash function must be multiple of TAU"
+        );
 
         let rng = Self::CsRng::seed_from_u64(seed);
         HorstSigScheme {
@@ -207,27 +208,35 @@ impl SignatureScheme for HorstSigScheme {
     fn sign(&mut self, msg: &[u8]) -> HorstSignature {
         let mut msg_hash = [0; MSG_HASH_SIZE];
         msg_hash.copy_from_slice(&Self::MsgHashFn::digest(msg)[..MSG_HASH_SIZE]);
-        
-		let tree = self.tree.as_ref().unwrap();
-		let sk = self.secret.as_ref().unwrap();
 
-		let mut reader = BitReader::new(&msg_hash);
-		let mut signature = [[[0_u8; TREE_HASH_SIZE]; TAU + 1]; K];
+        let tree = self.tree.as_ref().unwrap();
+        let sk = self.secret.as_ref().unwrap();
 
-		for i in 0..K {
-			let mut element = [[0_u8; TREE_HASH_SIZE]; TAU + 1];
+        let mut reader = BitReader::new(&msg_hash);
+        let mut signature = [[[0_u8; TREE_HASH_SIZE]; TAU + 1]; K];
 
-			let c_i : usize = reader.read_u64(TAU.try_into().unwrap()).unwrap().try_into().unwrap();
-			let sk_c_i = sk.get(c_i);
-			let auth = tree.get_auth_path(c_i);
-			assert_eq!(auth.len(), TAU + 1, "Wrong size of auth path!");
+        for i in 0..K {
+            let mut element = [[0_u8; TREE_HASH_SIZE]; TAU + 1];
 
-			element[0] = sk_c_i;
-			(&mut element[1..]).copy_from_slice(&auth[..(TAU + 1)]);
+            let c_i: usize = reader
+                .read_u64(TAU.try_into().unwrap())
+                .unwrap()
+                .try_into()
+                .unwrap();
+            let sk_c_i = sk.get(c_i);
+            let auth = tree.get_auth_path(c_i);
+            assert_eq!(auth.len(), TAU, "Wrong size of auth path!");
 
-			signature[i] = element;
-		}
-		assert_eq!(signature.len(), K, "Signature has a wrong number of elements!");
+            element[0] = sk_c_i;
+            (&mut element[1..]).copy_from_slice(&auth[..TAU]);
+
+            signature[i] = element;
+        }
+        assert_eq!(
+            signature.len(),
+            K,
+            "Signature has a wrong number of elements!"
+        );
 
         HorstSignature::new(signature)
     }

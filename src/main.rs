@@ -20,16 +20,16 @@ struct Args {
 }
 
 fn main() {
-    SimpleLogger::new().init().unwrap();
+    SimpleLogger::new().without_timestamps().init().unwrap();
     let args = Args::parse();
 
-	for h in 0..4 {
-		debug!("h: {}", h);
-	}
+    for h in 0..4 {
+        debug!("h: {}", h);
+    }
 
-	for h in (0..4).rev() {
-		debug!("h: {}", h);
-	}
+    for h in (0..4).rev() {
+        debug!("h: {}", h);
+    }
 
     let msg = b"Hello, world!";
 
@@ -50,7 +50,7 @@ fn main() {
     let eve_key_pair = eve_signer.gen_key_pair();
     debug!("{}", eve_key_pair);
     let eve_sign = eve_signer.sign(msg);
-	debug!("{}", eve_sign);
+    debug!("{}", eve_sign);
 
     //
     // Bob verifies

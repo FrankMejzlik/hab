@@ -67,6 +67,10 @@ impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
     }
 
     pub fn get_auth_path(&self, leaf_idx: usize) -> Vec<[u8; BLOCK_SIZE]> {
+        if leaf_idx >= self.t {
+            panic!("Leaf index out of range!");
+        }
+
         let mut res = vec![];
         let mut i = leaf_idx;
         for h in (1..self.h).rev() {
@@ -126,7 +130,7 @@ mod tests {
     use super::*;
     use crate::utils;
     #[test]
-    fn test_merkle_tree_get_auth_path() {
+    fn test_merkle_tree_get_auth_path_at_least_two_layers() {
         //
         // Assess
         //
@@ -305,6 +309,64 @@ mod tests {
             "06f9f538c00164fff766a636947465b374b090640f7b40958ba7472f28d8ae81",
             "Wrong node value!"
         );
+    }
+
+    #[test]
+    fn test_merkle_tree_get_auth_path_only_root() {
+        //
+        // Assess
+        //
+        const T: usize = 1;
+        const BLOCK_SIZE: usize = 32;
+        let depth = ((T as f32).log2() as usize) + 1;
+
+        let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect());
+        let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
+            .into_iter()
+            .map(|i| Sha3_256::digest(i).try_into().unwrap())
+            .collect();
+        for l in leaves.iter() {
+            print!("{}", utils::to_hex(l));
+        }
+
+        //
+        // Act
+        //
+        let tree = MerkleTree::new::<Sha3_256>(leaves);
+
+        let ap_0 = tree.get_auth_path(0);
+
+        let total_ap_len = ap_0.len();
+        //
+        // Assert
+        //
+        assert_eq!(total_ap_len, (depth - 1) * T, "Wrong auth path sizes!");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_merkle_tree_get_auth_path_empty() {
+        //
+        // Assess
+        //
+        const T: usize = 0;
+        const BLOCK_SIZE: usize = 32;
+
+        let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect());
+        let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
+            .into_iter()
+            .map(|i| Sha3_256::digest(i).try_into().unwrap())
+            .collect();
+        for l in leaves.iter() {
+            print!("{}", utils::to_hex(l));
+        }
+
+        //
+        // Act
+        //
+        let tree = MerkleTree::new::<Sha3_256>(leaves);
+
+        let _ap_0 = tree.get_auth_path(0); //< Should panic
     }
 
     #[test]
