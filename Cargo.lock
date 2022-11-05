@@ -26,6 +26,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "bitreader"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d84ea71c85d1fe98fe67a9b9988b1695bc24c0b0d3bfb18d4c510f44b4b09941"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -136,6 +145,7 @@ checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 name = "hashsig"
 version = "0.1.0"
 dependencies = [
+ "bitreader",
  "byteorder",
  "clap",
  "hex",

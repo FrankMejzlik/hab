@@ -1,10 +1,12 @@
 use std::boxed::Box;
 use std::fmt::{Display, Formatter, Result};
+use std::io::Cursor;
 // ---
 use hex::encode;
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, SeedableRng};
-use sha3::{Keccak256, Keccak512};
+use sha3::{Digest, Keccak256, Keccak512};
+use bitreader::BitReader;
 // ---
 use crate::box_array;
 use crate::merkle_tree::MerkleTree;
@@ -21,15 +23,15 @@ use crate::utils;
 ///
 /// ## Hash functions
 /// ### `ImplMessageHashFn`
-/// * H: {0, 1}* -> {0, 1}^{K * log_2(T)}
+/// * F: {0, 1}* -> {0, 1}^{K * log_2(T)}
 /// A hash function for hasing a message of arbitrary length.
 ///
 /// ### `ImplSecretKeyHashFn`
-/// * F: {0, 1}^N -> {0, 1}^N
+/// * G: {0, 1}^N -> {0, 1}^N
 /// A hash function for hasing a secret key numbers to their public counterparts.
 ///
 /// ### `ImplMerkleHashFn`
-/// * F: {0, 1}^{2 * N} -> {0, 1}^N
+/// * H: {0, 1}^{2 * N} -> {0, 1}^N
 /// A hash function for hasing a concatenation of two child hashes into the parent one
 /// in the Merkle tree.
 ///
@@ -44,8 +46,6 @@ use crate::utils;
 /// Security parameter
 const N: usize = 256 / 8;
 const TAU: usize = 16;
-/// # of SK numbers / leaf nodes in Merkle tree
-const T: usize = 2_usize.pow(TAU as u32);
 /// # of SK segments revealed in a signature
 const K: usize = 32;
 
@@ -64,9 +64,12 @@ type ImplCsPrng = ChaCha20Rng;
 type ImplSecretKey = HorstSecretKey;
 type ImplPublicKey = HorstPublicKey;
 
-const MSG_HASH_SIZE: usize = K * TAU;
-const SK_HASH_SIZE: usize = N;
-const TREE_HASH_SIZE: usize = N;
+/// # of SK numbers / leaf nodes in Merkle tree
+const T: usize = 2_usize.pow(TAU as u32);
+
+const MSG_HASH_SIZE: usize = (K * TAU) / 8;
+const SK_HASH_SIZE: usize = N / 8;
+const TREE_HASH_SIZE: usize = N / 8;
 
 type MsgHashBlock = [u8; MSG_HASH_SIZE];
 type SkHashBlock = [u8; SK_HASH_SIZE];
@@ -98,6 +101,10 @@ impl HorstSecretKey {
 
         HorstSecretKey { data }
     }
+
+	fn get(&self, idx: usize) -> SkHashBlock {
+		self.data[idx]
+	}
 }
 
 impl Display for HorstSecretKey {
@@ -140,8 +147,7 @@ pub struct HorstSignature {
     data: [[TreeHashBlock; TAU + 1]; K],
 }
 impl HorstSignature {
-    fn new() -> Self {
-        let data = [[[0_u8; TREE_HASH_SIZE]; TAU + 1]; K];
+    fn new(data: [[[u8; TREE_HASH_SIZE]; TAU + 1]; K]) -> Self {
         HorstSignature { data }
     }
 }
@@ -182,6 +188,13 @@ impl SignatureScheme for HorstSigScheme {
     type Signature = HorstSignature;
 
     fn new(seed: u64) -> Self {
+        // TODO: Check the matching sizes of hashes and parameters
+		assert!(TAU < 64, "TAU must be less than 64 bits.");
+
+		assert!((MSG_HASH_SIZE * 8) % TAU == 0, 
+			"The output size of a message hash function must be multiple of TAU");
+
+
         let rng = Self::CsRng::seed_from_u64(seed);
         HorstSigScheme {
             rng,
@@ -191,11 +204,35 @@ impl SignatureScheme for HorstSigScheme {
         }
     }
 
-    fn sign(&mut self, _msg: &[u8]) -> HorstSignature {
-        HorstSignature::new()
+    fn sign(&mut self, msg: &[u8]) -> HorstSignature {
+        let mut msg_hash = [0; MSG_HASH_SIZE];
+        msg_hash.copy_from_slice(&Self::MsgHashFn::digest(msg)[..MSG_HASH_SIZE]);
+        
+		let tree = self.tree.as_ref().unwrap();
+		let sk = self.secret.as_ref().unwrap();
+
+		let mut reader = BitReader::new(&msg_hash);
+		let mut signature = [[[0_u8; TREE_HASH_SIZE]; TAU + 1]; K];
+
+		for i in 0..K {
+			let mut element = [[0_u8; TREE_HASH_SIZE]; TAU + 1];
+
+			let c_i : usize = reader.read_u64(TAU.try_into().unwrap()).unwrap().try_into().unwrap();
+			let sk_c_i = sk.get(c_i);
+			let auth = tree.get_auth_path(c_i);
+			assert_eq!(auth.len(), TAU + 1, "Wrong size of auth path!");
+
+			element[0] = sk_c_i;
+			(&mut element[1..]).copy_from_slice(&auth[..(TAU + 1)]);
+
+			signature[i] = element;
+		}
+		assert_eq!(signature.len(), K, "Signature has a wrong number of elements!");
+
+        HorstSignature::new(signature)
     }
 
-    fn verify(_signature: &Self::Signature, _pk: &HorstPublicKey) -> bool {
+    fn verify(_signature: &HorstSignature, _pk: &HorstPublicKey) -> bool {
         true
     }
 
