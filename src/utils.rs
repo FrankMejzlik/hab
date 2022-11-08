@@ -122,7 +122,7 @@ mod tests {
         const NUM_NUMBERS: usize = 8;
         const BLOCK_SIZE: usize = 32;
 
-        let numbers = (0_u64..NUM_NUMBERS as u64).collect();
+        let numbers = (0_u64..NUM_NUMBERS as u64).collect::<Vec<u64>>();
         debug!("numbers: {:?}", numbers);
         let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&numbers);
         for (ex_num, num) in leaf_numbers.into_iter().enumerate() {

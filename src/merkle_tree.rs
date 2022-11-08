@@ -138,7 +138,8 @@ mod tests {
         const BLOCK_SIZE: usize = 32;
         let depth = ((T as f32).log2() as usize) + 1;
 
-        let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect());
+        let leaf_numbers =
+            utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect::<Vec<u64>>());
         let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
             .into_iter()
             .map(|i| Sha3_256::digest(i).try_into().unwrap())
@@ -320,7 +321,8 @@ mod tests {
         const BLOCK_SIZE: usize = 32;
         let depth = ((T as f32).log2() as usize) + 1;
 
-        let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect());
+        let leaf_numbers =
+            utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect::<Vec<u64>>());
         let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
             .into_iter()
             .map(|i| Sha3_256::digest(i).try_into().unwrap())
@@ -352,7 +354,8 @@ mod tests {
         const T: usize = 0;
         const BLOCK_SIZE: usize = 32;
 
-        let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect());
+        let leaf_numbers =
+            utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect::<Vec<u64>>());
         let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
             .into_iter()
             .map(|i| Sha3_256::digest(i).try_into().unwrap())
@@ -374,7 +377,8 @@ mod tests {
         const T: usize = 256;
         const BLOCK_SIZE: usize = 32;
 
-        let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect());
+        let leaf_numbers =
+            utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect::<Vec<u64>>());
         let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
             .into_iter()
             .map(|i| Sha3_256::digest(i).try_into().unwrap())
@@ -397,7 +401,8 @@ mod tests {
         //
 
         // Leaves in vectors
-        let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect());
+        let leaf_numbers =
+            utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect::<Vec<u64>>());
         let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
             .into_iter()
             .map(|i| Sha3_256::digest(i).try_into().unwrap())
@@ -462,7 +467,8 @@ mod tests {
         const T: usize = 2048;
         const BLOCK_SIZE: usize = 32;
 
-        let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect());
+        let leaf_numbers =
+            utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect::<Vec<u64>>());
         let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
             .into_iter()
             .map(|i| Sha3_256::digest(i).try_into().unwrap())
