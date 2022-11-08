@@ -7,7 +7,7 @@ pub struct KeyPair<GSecretKey, GPublicKey> {
     pub public: GPublicKey,
 }
 
-pub trait SignatureScheme {
+pub trait SignatureScheme<const N: usize, const K: usize, const TAU: usize> {
     type CsRng: CryptoRng + SeedableRng + RngCore;
     type MsgHashFn: Digest;
     type KeyHashFn: Digest;
@@ -15,6 +15,10 @@ pub trait SignatureScheme {
     type SecretKey;
     type PublicKey;
     type Signature;
+
+    type MsgHashBlock;
+    type SkHashBlock;
+    type TreeHashBlock;
 
     fn new(seed: u64) -> Self;
     fn verify(msg: &[u8], signature: &Self::Signature, pub_key: &Self::PublicKey) -> bool;

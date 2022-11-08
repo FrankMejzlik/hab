@@ -39,15 +39,6 @@ use crate::utils;
 /// Cryptographically safe pseudorandom number generator.
 ///
 
-/// ***************************************
-///             PARAMETERS
-/// ***************************************
-/// Security parameter
-const N: usize = 256 / 8;
-const TAU: usize = 16;
-/// # of SK segments revealed in a signature
-const K: usize = 32;
-
 // --- Hash functions ---
 type ImplMessageHashFn = Keccak512;
 type ImplSecretKeyHashFn = Keccak256;
@@ -60,21 +51,10 @@ type ImplCsPrng = ChaCha20Rng;
 /// ***************************************
 ///           INFERED PARAMETERS
 /// ***************************************
-type ImplSecretKey = HorstSecretKey;
-type ImplPublicKey = HorstPublicKey;
+type ImplSecretKey<const T: usize, const N: usize> = HorstSecretKey<T, N>;
+type ImplPublicKey<const N: usize> = HorstPublicKey<N>;
 
-/// # of SK numbers / leaf nodes in Merkle tree
-const T: usize = 2_usize.pow(TAU as u32);
-
-const MSG_HASH_SIZE: usize = (K * TAU) / 8;
-const SK_HASH_SIZE: usize = N;
-const TREE_HASH_SIZE: usize = N;
-
-type MsgHashBlock = [u8; MSG_HASH_SIZE];
-type SkHashBlock = [u8; SK_HASH_SIZE];
-type TreeHashBlock = [u8; TREE_HASH_SIZE];
-
-impl Display for KeyPair<ImplSecretKey, ImplPublicKey> {
+impl<const T: usize, const N: usize> Display for KeyPair<ImplSecretKey<T, N>, ImplPublicKey<N>> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(
             f,
@@ -85,13 +65,13 @@ impl Display for KeyPair<ImplSecretKey, ImplPublicKey> {
 }
 
 #[derive(Debug, Clone)]
-pub struct HorstSecretKey {
-    data: Box<[SkHashBlock; T]>,
+pub struct HorstSecretKey<const T: usize, const TREE_HASH_SIZE: usize> {
+    data: Box<[[u8; TREE_HASH_SIZE]; T]>,
 }
-impl HorstSecretKey {
+impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SIZE> {
     fn new(rng: &mut ImplCsPrng) -> Self {
         // Allocate the memory
-        let mut data = box_array![[0u8; SK_HASH_SIZE]; T];
+        let mut data = box_array![[0u8; TREE_HASH_SIZE]; T];
 
         // Generate the key
         for block in data.iter_mut() {
@@ -101,12 +81,12 @@ impl HorstSecretKey {
         HorstSecretKey { data }
     }
 
-    fn get(&self, idx: usize) -> SkHashBlock {
+    fn get(&self, idx: usize) -> [u8; TREE_HASH_SIZE] {
         self.data[idx]
     }
 }
 
-impl Display for HorstSecretKey {
+impl<const T: usize, const N: usize> Display for HorstSecretKey<T, N> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(f, "<<< HorstSecretKey >>>")?;
         writeln!(f, "\t[{:0>5}]: {}", 0, encode(&self.data[0]))?;
@@ -120,18 +100,18 @@ impl Display for HorstSecretKey {
 }
 
 #[derive(Debug, Clone)]
-pub struct HorstPublicKey {
-    data: Box<TreeHashBlock>,
+pub struct HorstPublicKey<const N: usize> {
+    data: Box<[u8; N]>,
 }
-impl HorstPublicKey {
-    fn new(root_hash: &[u8; TREE_HASH_SIZE]) -> Self {
-        let mut data = Box::new([0u8; TREE_HASH_SIZE]);
+impl<const N: usize> HorstPublicKey<N> {
+    fn new(root_hash: &[u8; N]) -> Self {
+        let mut data = Box::new([0u8; N]);
         data.copy_from_slice(root_hash);
 
         HorstPublicKey { data }
     }
 }
-impl Display for HorstPublicKey {
+impl<const N: usize> Display for HorstPublicKey<N> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(
             f,
@@ -142,42 +122,18 @@ impl Display for HorstPublicKey {
 }
 
 #[derive(Debug, Clone)]
-pub struct HorstSignature {
-    data: [[TreeHashBlock; TAU + 1]; K],
+pub struct HorstSignature<const N: usize, const K: usize, const TAUPLUS: usize> {
+    data: [[[u8; N]; TAUPLUS]; K],
 }
-impl HorstSignature {
-    fn new(data: [[TreeHashBlock; TAU + 1]; K]) -> Self {
+impl<const N: usize, const K: usize, const TAUPLUS: usize> HorstSignature<N, K, TAUPLUS> {
+    fn new(data: [[[u8; N]; TAUPLUS]; K]) -> Self {
         HorstSignature { data }
     }
 }
 
-impl IntoIterator for HorstSignature {
-    type Item = [[u8; TREE_HASH_SIZE]; TAU + 1];
-    type IntoIter = HorstSignatureIntoIterator;
-
-    fn into_iter(self) -> Self::IntoIter {
-        HorstSignatureIntoIterator {
-            cont: self,
-            index: 0,
-        }
-    }
-}
-
-pub struct HorstSignatureIntoIterator {
-    cont: HorstSignature,
-    index: usize,
-}
-
-impl Iterator for HorstSignatureIntoIterator {
-    type Item = [TreeHashBlock; TAU + 1];
-    fn next(&mut self) -> Option<Self::Item> {
-        let result = self.cont.data[self.index];
-        self.index += 1;
-        Some(result)
-    }
-}
-
-impl Display for HorstSignature {
+impl<const N: usize, const K: usize, const TAUPLUS: usize> Display
+    for HorstSignature<N, K, TAUPLUS>
+{
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(f, "<<< HorstSignature >>>")?;
 
@@ -195,23 +151,55 @@ impl Display for HorstSignature {
     }
 }
 
-pub struct HorstSigScheme {
-    rng: <HorstSigScheme as SignatureScheme>::CsRng,
-    secret: Option<HorstSecretKey>,
+pub struct HorstSigScheme<
+    const N: usize,
+    const K: usize,
+    const TAU: usize,
+    const TAUPLUS: usize,
+    const T: usize,
+    const MSG_HASH_SIZE: usize,
+    const TREE_HASH_SIZE: usize,
+> {
+    rng: <Self as SignatureScheme<N, K, TAU>>::CsRng,
+    secret: Option<HorstSecretKey<T, TREE_HASH_SIZE>>,
     tree: Option<MerkleTree<TREE_HASH_SIZE>>,
-    public: Option<HorstPublicKey>,
+    public: Option<HorstPublicKey<TREE_HASH_SIZE>>,
 }
 
-impl HorstSigScheme {}
+impl<
+        const N: usize,
+        const K: usize,
+        const TAU: usize,
+        const TAUPLUS: usize,
+        const T: usize,
+        const MSG_HASH_SIZE: usize,
+        const TREE_HASH_SIZE: usize,
+    > HorstSigScheme<N, K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE>
+{
+}
 
-impl SignatureScheme for HorstSigScheme {
+impl<
+        const N: usize,
+        const K: usize,
+        const TAU: usize,
+        const TAUPLUS: usize,
+        const T: usize,
+        const MSG_HASH_SIZE: usize,
+        const TREE_HASH_SIZE: usize,
+    > SignatureScheme<N, K, TAU>
+    for HorstSigScheme<N, K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE>
+{
     type CsRng = ImplCsPrng;
     type MsgHashFn = ImplMessageHashFn;
     type KeyHashFn = ImplSecretKeyHashFn;
     type TreeHash = ImplMerkleHashFn;
-    type SecretKey = ImplSecretKey;
-    type PublicKey = ImplPublicKey;
-    type Signature = HorstSignature;
+    type SecretKey = ImplSecretKey<T, TREE_HASH_SIZE>;
+    type PublicKey = ImplPublicKey<TREE_HASH_SIZE>;
+    type Signature = HorstSignature<TREE_HASH_SIZE, K, TAUPLUS>;
+
+    type MsgHashBlock = [u8; MSG_HASH_SIZE];
+    type SkHashBlock = [u8; TREE_HASH_SIZE];
+    type TreeHashBlock = [u8; TREE_HASH_SIZE];
 
     fn new(seed: u64) -> Self {
         // TODO: Check the matching sizes of hashes and parameters
@@ -231,21 +219,21 @@ impl SignatureScheme for HorstSigScheme {
         }
     }
 
-    fn sign(&mut self, msg: &[u8]) -> HorstSignature {
+    fn sign(&mut self, msg: &[u8]) -> Self::Signature {
         let mut msg_hash = [0; MSG_HASH_SIZE];
         msg_hash.copy_from_slice(&Self::MsgHashFn::digest(msg)[..MSG_HASH_SIZE]);
 
         let tree = self.tree.as_ref().unwrap();
         let sk = self.secret.as_ref().unwrap();
 
-        let mut signature = [[[0_u8; TREE_HASH_SIZE]; TAU + 1]; K];
+        let mut signature = [[[0_u8; TREE_HASH_SIZE]; TAUPLUS]; K];
 
         // Get segment indices
         let indices = utils::get_segment_indices::<K, MSG_HASH_SIZE, TAU>(&msg_hash);
         debug!("indices: {:?}", indices);
 
         for (i, c_i) in indices.into_iter().enumerate() {
-            let mut element = [[0_u8; TREE_HASH_SIZE]; TAU + 1];
+            let mut element = [[0_u8; TREE_HASH_SIZE]; TAUPLUS];
             let sk_c_i = sk.get(c_i);
             let auth = tree.get_auth_path(c_i);
             assert_eq!(auth.len(), TAU, "Wrong size of auth path!");
@@ -264,9 +252,9 @@ impl SignatureScheme for HorstSigScheme {
         HorstSignature::new(signature)
     }
 
-    fn verify(msg: &[u8], signature: &HorstSignature, pk: &HorstPublicKey) -> bool {
+    fn verify(msg: &[u8], signature: &Self::Signature, pk: &Self::PublicKey) -> bool {
         // Hash the message
-        let mut msg_hash: MsgHashBlock = [0; MSG_HASH_SIZE];
+        let mut msg_hash = [0; MSG_HASH_SIZE];
         msg_hash.copy_from_slice(&Self::MsgHashFn::digest(msg)[..MSG_HASH_SIZE]);
 
         // Get segment indices
@@ -318,10 +306,10 @@ impl SignatureScheme for HorstSigScheme {
 
     // ---
 
-    fn gen_key_pair(&mut self) -> KeyPair<HorstSecretKey, HorstPublicKey> {
-        let sk = HorstSecretKey::new(&mut self.rng);
+    fn gen_key_pair(&mut self) -> KeyPair<Self::SecretKey, Self::PublicKey> {
+        let sk = Self::SecretKey::new(&mut self.rng);
         let tree = MerkleTree::new::<Self::TreeHash>(sk.data.to_vec());
-        let pk = HorstPublicKey::new(tree.root());
+        let pk = Self::PublicKey::new(tree.root());
 
         // Update the Merkle tree for this SK
         self.tree = Some(tree);
@@ -336,10 +324,10 @@ impl SignatureScheme for HorstSigScheme {
 
     // ---
 
-    fn secret_key(&self) -> Option<&HorstSecretKey> {
+    fn secret_key(&self) -> Option<&Self::SecretKey> {
         self.secret.as_ref()
     }
-    fn public_key(&self) -> Option<&HorstPublicKey> {
+    fn public_key(&self) -> Option<&Self::PublicKey> {
         self.public.as_ref()
     }
 }

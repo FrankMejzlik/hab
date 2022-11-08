@@ -12,6 +12,22 @@ use simple_logger::SimpleLogger;
 use horst::HorstSigScheme;
 use signature_scheme::SignatureScheme;
 
+/// ***************************************
+///             PARAMETERS
+/// ***************************************
+/// Security parameter, size of a tree hashe
+const N: usize = 256 / 8;
+/// # of SK segments revealed in a signature
+const K: usize = 32;
+const TAU: usize = 16;
+// ---
+const TAUPLUS: usize = TAU + 1;
+const T: usize = 2_usize.pow(TAU as u32);
+const MSG_HASH_SIZE: usize = (K * TAU) / 8;
+const TREE_HASH_SIZE: usize = N;
+
+type Signer = HorstSigScheme<N, K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE>;
+
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -27,8 +43,8 @@ fn main() {
 
     let msg = b"Hello, world!";
 
-    let mut alice_signer = HorstSigScheme::new(args.seed);
-    let mut eve_signer = HorstSigScheme::new(args.seed);
+    let mut alice_signer = Signer::new(args.seed);
+    let mut eve_signer = Signer::new(args.seed);
 
     //
     // Alice signs
@@ -49,9 +65,9 @@ fn main() {
     //
     // Bob verifies
     //
-    let bob_from_alice_valid = HorstSigScheme::verify(msg, &alice_sign, &alice_key_pair.public);
+    let bob_from_alice_valid = Signer::verify(msg, &alice_sign, &alice_key_pair.public);
     assert!(bob_from_alice_valid, "The valid signature was rejected!");
 
-    let bob_from_eve_valid = HorstSigScheme::verify(msg, &eve_sign, &alice_key_pair.public);
+    let bob_from_eve_valid = Signer::verify(msg, &eve_sign, &alice_key_pair.public);
     assert!(!bob_from_eve_valid, "The invalid signature was accepted!");
 }
