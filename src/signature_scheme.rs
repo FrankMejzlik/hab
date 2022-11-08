@@ -17,7 +17,7 @@ pub trait SignatureScheme {
     type Signature;
 
     fn new(seed: u64) -> Self;
-    fn verify(signature: &Self::Signature, pub_key: &Self::PublicKey) -> bool;
+    fn verify(msg: &[u8], signature: &Self::Signature, pub_key: &Self::PublicKey) -> bool;
     // ---
     fn sign(&mut self, msg: &[u8]) -> Self::Signature;
     fn gen_key_pair(&mut self) -> KeyPair<Self::SecretKey, Self::PublicKey>;

@@ -1,9 +1,8 @@
 use std::boxed::Box;
 use std::fmt::{Display, Formatter, Result};
-use std::io::Cursor;
 // ---
-use bitreader::BitReader;
 use hex::encode;
+use log::debug;
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, SeedableRng};
 use sha3::{Digest, Keccak256, Keccak512};
@@ -68,8 +67,8 @@ type ImplPublicKey = HorstPublicKey;
 const T: usize = 2_usize.pow(TAU as u32);
 
 const MSG_HASH_SIZE: usize = (K * TAU) / 8;
-const SK_HASH_SIZE: usize = N / 8;
-const TREE_HASH_SIZE: usize = N / 8;
+const SK_HASH_SIZE: usize = N;
+const TREE_HASH_SIZE: usize = N;
 
 type MsgHashBlock = [u8; MSG_HASH_SIZE];
 type SkHashBlock = [u8; SK_HASH_SIZE];
@@ -147,10 +146,37 @@ pub struct HorstSignature {
     data: [[TreeHashBlock; TAU + 1]; K],
 }
 impl HorstSignature {
-    fn new(data: [[[u8; TREE_HASH_SIZE]; TAU + 1]; K]) -> Self {
+    fn new(data: [[TreeHashBlock; TAU + 1]; K]) -> Self {
         HorstSignature { data }
     }
 }
+
+impl IntoIterator for HorstSignature {
+    type Item = [[u8; TREE_HASH_SIZE]; TAU + 1];
+    type IntoIter = HorstSignatureIntoIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        HorstSignatureIntoIterator {
+            cont: self,
+            index: 0,
+        }
+    }
+}
+
+pub struct HorstSignatureIntoIterator {
+    cont: HorstSignature,
+    index: usize,
+}
+
+impl Iterator for HorstSignatureIntoIterator {
+    type Item = [TreeHashBlock; TAU + 1];
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = self.cont.data[self.index];
+        self.index += 1;
+        Some(result)
+    }
+}
+
 impl Display for HorstSignature {
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(f, "<<< HorstSignature >>>")?;
@@ -212,17 +238,14 @@ impl SignatureScheme for HorstSigScheme {
         let tree = self.tree.as_ref().unwrap();
         let sk = self.secret.as_ref().unwrap();
 
-        let mut reader = BitReader::new(&msg_hash);
         let mut signature = [[[0_u8; TREE_HASH_SIZE]; TAU + 1]; K];
 
-        for i in 0..K {
-            let mut element = [[0_u8; TREE_HASH_SIZE]; TAU + 1];
+        // Get segment indices
+        let indices = utils::get_segment_indices::<K, MSG_HASH_SIZE, TAU>(&msg_hash);
+        debug!("indices: {:?}", indices);
 
-            let c_i: usize = reader
-                .read_u64(TAU.try_into().unwrap())
-                .unwrap()
-                .try_into()
-                .unwrap();
+        for (i, c_i) in indices.into_iter().enumerate() {
+            let mut element = [[0_u8; TREE_HASH_SIZE]; TAU + 1];
             let sk_c_i = sk.get(c_i);
             let auth = tree.get_auth_path(c_i);
             assert_eq!(auth.len(), TAU, "Wrong size of auth path!");
@@ -241,7 +264,55 @@ impl SignatureScheme for HorstSigScheme {
         HorstSignature::new(signature)
     }
 
-    fn verify(_signature: &HorstSignature, _pk: &HorstPublicKey) -> bool {
+    fn verify(msg: &[u8], signature: &HorstSignature, pk: &HorstPublicKey) -> bool {
+        // Hash the message
+        let mut msg_hash: MsgHashBlock = [0; MSG_HASH_SIZE];
+        msg_hash.copy_from_slice(&Self::MsgHashFn::digest(msg)[..MSG_HASH_SIZE]);
+
+        // Get segment indices
+        let indices = utils::get_segment_indices::<K, MSG_HASH_SIZE, TAU>(&msg_hash);
+        debug!("indices: {:?}", indices);
+
+        for (i, segment) in signature.data.into_iter().enumerate() {
+            let mut idx = indices[i];
+
+            // TODO: How to initialize
+            let mut parent_hash = Self::TreeHash::digest(b"");
+            for (j, s) in segment.into_iter().enumerate() {
+                // SK
+                if j == 0 {
+                    // Hash the secret segment
+                    parent_hash = Self::KeyHashFn::digest(s);
+                }
+                // Auth path
+                else {
+                    let auth_is_left = (idx % 2) == 1;
+                    let mut hasher = Self::TreeHash::new();
+
+                    if auth_is_left {
+                        hasher.update(s);
+                        hasher.update(parent_hash);
+                    } else {
+                        hasher.update(parent_hash);
+                        hasher.update(s);
+                    }
+                    parent_hash = hasher.finalize();
+                    idx /= 2;
+                }
+            }
+
+            // Check the equality with the PK
+            let act_root = &parent_hash.as_slice()[..TREE_HASH_SIZE];
+            if act_root != *pk.data {
+                debug!(
+                    "{}\n\tvs\n {}",
+                    utils::to_hex(act_root),
+                    utils::to_hex(&*pk.data)
+                );
+                return false;
+            }
+        }
+
         true
     }
 

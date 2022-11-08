@@ -2,7 +2,7 @@ use sha3::Digest;
 use std::fmt::Debug;
 use std::fmt::{Display, Formatter, Result};
 // ---
-use log::debug;
+
 // ---
 
 #[derive(Debug)]
@@ -45,10 +45,10 @@ impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
             let base_prev = 2_usize.pow((l + 1) as u32) - 1;
             let base = 2_usize.pow(l as u32) - 1;
             for i in 0_usize..num_idxs {
-                let mut concat = t.data[base_prev + 2 * i].to_vec();
-                concat.append(&mut t.data[base_prev + 2 * i + 1].to_vec());
-
-                let r = Hash::digest(concat);
+                let mut hasher = Hash::new();
+                hasher.update(t.data[base_prev + 2 * i]);
+                hasher.update(t.data[base_prev + 2 * i + 1]);
+                let r = hasher.finalize();
 
                 t.data[base + i].copy_from_slice(&r[..BLOCK_SIZE]);
             }
@@ -81,9 +81,9 @@ impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
             i = (i as i32 + diff) as usize;
 
             // debug!("h: {}; i: {}", h, i);
-            res.push(self.get(h.try_into().unwrap(), i).clone());
+            res.push(*self.get(h.try_into().unwrap(), i));
 
-            i = i / 2;
+            i /= 2;
         }
         res
     }
@@ -105,7 +105,7 @@ size: {}
         for l in 0_u32..self.h as u32 {
             let num_idxs = 2_usize.pow(l as u32);
             for i in 0_usize..num_idxs {
-                for (i, b) in self.get(l, i).into_iter().enumerate() {
+                for (i, b) in self.get(l, i).iter().enumerate() {
                     if i >= 2 {
                         break;
                     }

@@ -1,4 +1,5 @@
 // ---
+use bitreader::BitReader;
 use hex::{decode, encode};
 use log::debug;
 
@@ -37,20 +38,40 @@ pub fn from_hex(hex_bytes: &str) -> Result<Vec<u8>, String> {
 }
 
 #[allow(dead_code)]
-pub fn gen_byte_blocks_from<const BLOCK_SIZE: usize>(cont: &Vec<u64>) -> Vec<[u8; BLOCK_SIZE]> {
+pub fn gen_byte_blocks_from<const BLOCK_SIZE: usize>(cont: &[u64]) -> Vec<[u8; BLOCK_SIZE]> {
     let mut result = vec![];
-    for item in cont.into_iter() {
-        let mut bs = item.to_le_bytes();
+    for item in cont.iter() {
+        let bs = item.to_le_bytes();
 
         let mut arr = [0x0; BLOCK_SIZE];
 
         debug!("PRE: arr: {}", to_hex(&arr));
-        (&mut arr[0..std::mem::size_of::<u64>()]).copy_from_slice(&mut bs);
+        (&mut arr[0..std::mem::size_of::<u64>()]).copy_from_slice(&bs);
         debug!("POST: arr: {}", to_hex(&arr));
         result.push(arr);
     }
 
     result
+}
+
+pub fn get_segment_indices<const K: usize, const HASH_SIZE: usize, const TAU: usize>(
+    msg_hash: &[u8; HASH_SIZE],
+) -> Vec<usize> {
+    let mut res = vec![];
+
+    let mut reader = BitReader::new(msg_hash);
+
+    for _ in 0..K {
+        let c_i: usize = reader
+            .read_u64(TAU.try_into().unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+
+        res.push(c_i);
+    }
+
+    res
 }
 
 #[cfg(test)]
