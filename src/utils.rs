@@ -1,3 +1,7 @@
+//!
+//! Generally usefull functions.
+//!
+
 // ---
 use bitreader::BitReader;
 use hex::{decode, encode};

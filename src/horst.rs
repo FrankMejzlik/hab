@@ -1,3 +1,31 @@
+//!
+//! HORS signature scheme with trees (HORST) as proposed in the [SPHINCS scheme](https://sphincs.cr.yp.to/sphincs-20150202.pdf).
+//!
+//!
+//! # Remarks
+//! For now, we don't use the masked Merkle tree construction (called SPR-Merkle tree) as used in
+//! the [reference implementation](https://link.springer.com/chapter/10.1007/978-3-540-88403-3_8). 
+//! We use the standard hash tree.
+//!
+//! # Parameters
+//! * `N` - Size of the hashes inside the Merkle tree (and therefore in the signatures and keys).
+//! * `K` - Number of secret key segments in each signature (i.e. we're choosing K-sized subsets from a 2^TAU-sized set).
+//! * `TAU` - Depth of the Merkle tree / number of bits in the indexing segment in message hash.
+//!         The number of leaves in the tree (i.e. number of items in the set we're choosing from) is 2^TAU.
+//!
+//! ## Hash functions
+//! * `MsgHashFn` - `F: {0, 1}* -> {0, 1}^{K * log_2(T)}`
+//! A hash function for hasing a message of arbitrary length & hashing the N-bit secrets into N-bit output.
+//!     
+//!
+//! * `TreeHashFn` - `H: {0, 1}^{2 * N} -> {0, 1}^N` AND `G: {0, 1}^N -> {0, 1}^N`
+//! A hash function for hasing a concatenation of two child hashes into the parent one in the Merkle tree.
+//! -- AND --
+//! A hash function for hasing a secret key elements into the Merkle tree leaves.
+//!
+//! ## Random generators
+//! * `ImplCsPrng` - Cryptographically safe pseudo-random number generator.
+//!
 use std::boxed::Box;
 use std::fmt::{Display, Formatter, Result};
 // ---
@@ -11,33 +39,6 @@ use crate::box_array;
 use crate::merkle_tree::MerkleTree;
 use crate::signature_scheme::{KeyPair, SignatureScheme};
 use crate::utils;
-
-///
-/// HORS with trees
-///
-/// # Parameters
-/// `N` - The output size of a Merkle tree hash function.
-/// `T` - Number of SK numbers / number of leaf nodes in Merkle tree
-/// `K` - Number of segments in each signature
-///
-/// ## Hash functions
-/// ### `ImplMessageHashFn`
-/// * F: {0, 1}* -> {0, 1}^{K * log_2(T)}
-/// A hash function for hasing a message of arbitrary length.
-///
-/// ### `ImplSecretTreeHash`
-/// * G: {0, 1}^N -> {0, 1}^N
-/// A hash function for hasing a secret key numbers to their public counterparts.
-///
-/// ### `ImplMerkleHashFn`
-/// * H: {0, 1}^{2 * N} -> {0, 1}^N
-/// A hash function for hasing a concatenation of two child hashes into the parent one
-/// in the Merkle tree.
-///
-/// ## Random generators
-/// ### `ImplCsPrng`
-/// Cryptographically safe pseudorandom number generator.
-///
 
 impl<const T: usize, const N: usize> Display for KeyPair<HorstSecretKey<T, N>, HorstPublicKey<N>> {
     fn fmt(&self, f: &mut Formatter) -> Result {

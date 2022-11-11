@@ -1,3 +1,7 @@
+//!
+//! Module defining the general interface of a hash-based signature scheme.
+//!
+
 // ---
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use sha3::Digest;

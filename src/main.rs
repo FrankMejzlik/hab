@@ -1,3 +1,6 @@
+//!
+//! <PROJECT_NAME> is an implementation of the hash-based authentication protocol for streamed data.
+//!
 #[allow(clippy::assertions_on_constants)]
 mod horst;
 mod merkle_tree;

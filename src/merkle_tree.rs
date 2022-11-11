@@ -1,3 +1,6 @@
+//!
+//! Implementation of a [Merkle tree](https://en.wikipedia.org/wiki/Merkle_tree) used for hash-based signatures.
+//!
 use sha3::Digest;
 use std::fmt::Debug;
 use std::fmt::{Display, Formatter, Result};
