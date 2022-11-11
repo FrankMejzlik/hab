@@ -2,7 +2,8 @@ use sha3::Digest;
 use std::fmt::Debug;
 use std::fmt::{Display, Formatter, Result};
 // ---
-
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 // ---
 
 #[derive(Debug)]
@@ -34,8 +35,10 @@ impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
 
         let base = 2_usize.pow((h - 1) as u32) - 1;
 
+        // Hash the SK for the tree leaves
         for (i, d) in leaves.into_iter().enumerate() {
-            data[base + i] = d;
+            let hash = Hash::digest(d);
+            data[base + i].copy_from_slice(&hash[..BLOCK_SIZE])
         }
 
         let mut t = MerkleTree { data, t, h, size };
@@ -140,18 +143,11 @@ mod tests {
 
         let leaf_numbers =
             utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect::<Vec<u64>>());
-        let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
-            .into_iter()
-            .map(|i| Sha3_256::digest(i).try_into().unwrap())
-            .collect();
-        for l in leaves.iter() {
-            print!("{}", utils::to_hex(l));
-        }
 
         //
         // Act
         //
-        let tree = MerkleTree::new::<Sha3_256>(leaves);
+        let tree = MerkleTree::new::<Sha3_256>(leaf_numbers);
 
         let ap_0 = tree.get_auth_path(0);
         let ap_1 = tree.get_auth_path(1);
@@ -404,7 +400,7 @@ mod tests {
         let leaf_numbers =
             utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect::<Vec<u64>>());
         let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
-            .into_iter()
+            .iter()
             .map(|i| Sha3_256::digest(i).try_into().unwrap())
             .collect();
 
@@ -446,7 +442,7 @@ mod tests {
         //
 
         // Build the tree
-        let act_tree = MerkleTree::new::<Sha3_256>(leaves);
+        let act_tree = MerkleTree::new::<Sha3_256>(leaf_numbers);
 
         //
         // Assert
@@ -469,13 +465,10 @@ mod tests {
 
         let leaf_numbers =
             utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect::<Vec<u64>>());
-        let leaves: Vec<[u8; BLOCK_SIZE]> = leaf_numbers
-            .into_iter()
-            .map(|i| Sha3_256::digest(i).try_into().unwrap())
-            .collect();
 
         // Build the tree
-        let act_tree = MerkleTree::new::<Sha3_256>(leaves);
+        let act_tree = MerkleTree::new::<Sha3_256>(leaf_numbers);
+        println!("{}", utils::to_hex(act_tree.root()));
 
         assert_eq!(
             utils::to_hex(&act_tree.data[0]),

@@ -2,10 +2,11 @@ use std::boxed::Box;
 use std::fmt::{Display, Formatter, Result};
 // ---
 use hex::encode;
-use log::debug;
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, SeedableRng};
-use sha3::{Digest, Keccak256, Keccak512};
+use sha3::{Digest, Sha3_256, Sha3_512};
 // ---
 use crate::box_array;
 use crate::merkle_tree::MerkleTree;
@@ -40,9 +41,9 @@ use crate::utils;
 ///
 
 // --- Hash functions ---
-type ImplMessageHashFn = Keccak512;
-type ImplSecretKeyHashFn = Keccak256;
-type ImplMerkleHashFn = Keccak256;
+type ImplMessageHashFn = Sha3_512;
+type ImplSecretKeyHashFn = Sha3_256;
+type ImplMerkleHashFn = Sha3_256;
 
 // --- Random generators ---
 /// A seedable CSPRNG used for number generation
@@ -76,6 +77,7 @@ impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SI
         // Generate the key
         for block in data.iter_mut() {
             rng.fill_bytes(block);
+            // debug!("{}", utils::to_hex(block));
         }
 
         HorstSecretKey { data }
@@ -230,7 +232,7 @@ impl<
 
         // Get segment indices
         let indices = utils::get_segment_indices::<K, MSG_HASH_SIZE, TAU>(&msg_hash);
-        debug!("indices: {:?}", indices);
+        // debug!("indices: {:?}", indices);
 
         for (i, c_i) in indices.into_iter().enumerate() {
             let mut element = [[0_u8; TREE_HASH_SIZE]; TAUPLUS];
@@ -259,7 +261,7 @@ impl<
 
         // Get segment indices
         let indices = utils::get_segment_indices::<K, MSG_HASH_SIZE, TAU>(&msg_hash);
-        debug!("indices: {:?}", indices);
+        // debug!("indices: {:?}", indices);
 
         for (i, segment) in signature.data.into_iter().enumerate() {
             let mut idx = indices[i];
@@ -292,11 +294,6 @@ impl<
             // Check the equality with the PK
             let act_root = &parent_hash.as_slice()[..TREE_HASH_SIZE];
             if act_root != *pk.data {
-                debug!(
-                    "{}\n\tvs\n {}",
-                    utils::to_hex(act_root),
-                    utils::to_hex(&*pk.data)
-                );
                 return false;
             }
         }
@@ -329,5 +326,49 @@ impl<
     }
     fn public_key(&self) -> Option<&Self::PublicKey> {
         self.public.as_ref()
+    }
+}
+#[cfg(test)]
+mod tests {
+    use std::vec::Vec;
+    // ---
+    use sha3::{Digest, Sha3_256};
+    use std::println as debug;
+
+    // ---
+    use super::*;
+    use crate::utils;
+
+    #[test]
+    fn test_horst_sign_verify() {
+        let msg = b"Hello, world!";
+
+        let mut alice_signer = Signer::new(args.seed);
+        let mut eve_signer = Signer::new(args.seed + 1);
+
+        //
+        // Alice signs
+        //
+        let alice_key_pair = alice_signer.gen_key_pair();
+        debug!("{}", alice_key_pair);
+        let alice_sign = alice_signer.sign(msg);
+        //debug!("{}", alice_sign);
+
+        //
+        // Eve attacker signs
+        //
+        let _eve_key_pair = eve_signer.gen_key_pair();
+        //debug!("{}", eve_key_pair);
+        let eve_sign = eve_signer.sign(msg);
+        //debug!("{}", eve_sign);
+
+        //
+        // Bob verifies
+        //
+        let bob_from_alice_valid = Signer::verify(msg, &alice_sign, &alice_key_pair.public);
+        assert!(bob_from_alice_valid, "The valid signature was rejected!");
+
+        let bob_from_eve_valid = Signer::verify(msg, &eve_sign, &alice_key_pair.public);
+        assert!(!bob_from_eve_valid, "The invalid signature was accepted!");
     }
 }

@@ -5,21 +5,39 @@ mod signature_scheme;
 mod utils;
 
 // ---
+use cfg_if::cfg_if;
 use clap::Parser;
-use log::debug;
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 use simple_logger::SimpleLogger;
 // ---
 use horst::HorstSigScheme;
 use signature_scheme::SignatureScheme;
 
-/// ***************************************
-///             PARAMETERS
-/// ***************************************
-/// Security parameter, size of a tree hashe
-const N: usize = 256 / 8;
-/// # of SK segments revealed in a signature
-const K: usize = 32;
-const TAU: usize = 16;
+// ***************************************
+//             PARAMETERS
+// ***************************************
+cfg_if! {
+    // *** PRODUCTION ***
+    if #[cfg(not(feature = "debug"))] {
+        /// Size of the hashes in a Merkle tree
+        const N: usize = 256 / 8;
+        /// Number of SK segments in signature
+        const K: usize = 32;
+        /// Depth of the Merkle tree (without the root layer)
+        const TAU: usize = 16;
+    }
+    // *** DEBUG ***
+    else {
+        /// Size of the hashes in a Merkle tree
+        const N: usize = 256 / 8;
+        /// Number of SK segments in signature
+        const K: usize = 128;
+        /// Depth of the Merkle tree (without the root layer)
+        const TAU: usize = 4;
+    }
+}
+
 // ---
 const TAUPLUS: usize = TAU + 1;
 const T: usize = 2_usize.pow(TAU as u32);
@@ -44,7 +62,7 @@ fn main() {
     let msg = b"Hello, world!";
 
     let mut alice_signer = Signer::new(args.seed);
-    let mut eve_signer = Signer::new(args.seed);
+    let mut eve_signer = Signer::new(args.seed + 1);
 
     //
     // Alice signs
@@ -52,22 +70,24 @@ fn main() {
     let alice_key_pair = alice_signer.gen_key_pair();
     debug!("{}", alice_key_pair);
     let alice_sign = alice_signer.sign(msg);
-    //debug!("{}", alice_sign);
+    debug!("{}", alice_sign);
 
     //
     // Eve attacker signs
     //
     let _eve_key_pair = eve_signer.gen_key_pair();
-    //debug!("{}", eve_key_pair);
+    // debug!("{}", eve_key_pair);
     let eve_sign = eve_signer.sign(msg);
-    //debug!("{}", eve_sign);
+    // debug!("{}", eve_sign);
 
     //
     // Bob verifies
     //
     let bob_from_alice_valid = Signer::verify(msg, &alice_sign, &alice_key_pair.public);
+    debug!("Valid signature check's result: {}", bob_from_alice_valid);
     assert!(bob_from_alice_valid, "The valid signature was rejected!");
 
     let bob_from_eve_valid = Signer::verify(msg, &eve_sign, &alice_key_pair.public);
+    debug!("Invalid signature check's result: {}", bob_from_eve_valid);
     assert!(!bob_from_eve_valid, "The invalid signature was accepted!");
 }
