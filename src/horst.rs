@@ -4,7 +4,7 @@
 //!
 //! # Remarks
 //! For now, we don't use the masked Merkle tree construction (called SPR-Merkle tree) as used in
-//! the [reference implementation](https://link.springer.com/chapter/10.1007/978-3-540-88403-3_8). 
+//! the [reference implementation](https://link.springer.com/chapter/10.1007/978-3-540-88403-3_8).
 //! We use the standard hash tree.
 //!
 //! # Parameters
@@ -216,11 +216,21 @@ impl<
     type Signature = HorstSignature<TREE_HASH_SIZE, K, TAUPLUS>;
 
     type MsgHashBlock = [u8; MSG_HASH_SIZE];
-    type SkHashBlock = [u8; TREE_HASH_SIZE];
     type TreeHashBlock = [u8; TREE_HASH_SIZE];
 
     fn new(seed: u64) -> Self {
         // TODO: Check the matching sizes of hashes and parameters
+        assert_eq!(
+            MSG_HASH_SIZE,
+            <MsgHashFn as Digest>::output_size(),
+            "The parameters do not match the size of a message hash function output!"
+        );
+        assert_eq!(
+            TREE_HASH_SIZE,
+            <TreeHash as Digest>::output_size(),
+            "The parameter do not match the size of the a tree hash function output!"
+        );
+
         assert!(TAU < 64, "TAU must be less than 64 bits.");
 
         assert!(

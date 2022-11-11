@@ -28,7 +28,6 @@ pub trait SignatureScheme<
     type Signature;
 
     type MsgHashBlock;
-    type SkHashBlock;
     type TreeHashBlock;
 
     fn new(seed: u64) -> Self;
