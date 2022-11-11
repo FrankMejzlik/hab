@@ -356,43 +356,81 @@ impl<
 }
 #[cfg(test)]
 mod tests {
-    // ---
-    use sha3::Digest;
-    use std::println as debug;
 
+    use std::println as debug;
+    // ---
+    use rand_chacha::ChaCha20Rng;
+    use sha3::{Sha3_256, Sha3_512};
     // ---
     use super::*;
 
-    // #[test]
-    // fn test_horst_sign_verify() {
-    //     let msg = b"Hello, world!";
+    const SEED: u64 = 42;
 
-    //     let mut alice_signer = Signer::new(args.seed);
-    //     let mut eve_signer = Signer::new(args.seed + 1);
+    /// Size of the hashes in a Merkle tree
+    const N: usize = 256 / 8;
+    /// Number of SK segments in signature
+    const K: usize = 32;
+    /// Depth of the Merkle tree (without the root layer)
+    const TAU: usize = 16;
 
-    //     //
-    //     // Alice signs
-    //     //
-    //     let alice_key_pair = alice_signer.gen_key_pair();
-    //     debug!("{}", alice_key_pair);
-    //     let alice_sign = alice_signer.sign(msg);
-    //     //debug!("{}", alice_sign);
+    // --- Random generators ---
+    /// A seedable CSPRNG used for number generation
+    type CsPrng = ChaCha20Rng;
 
-    //     //
-    //     // Eve attacker signs
-    //     //
-    //     let _eve_key_pair = eve_signer.gen_key_pair();
-    //     //debug!("{}", eve_key_pair);
-    //     let eve_sign = eve_signer.sign(msg);
-    //     //debug!("{}", eve_sign);
+    // --- Hash functions ---
+    // Hash fn for message hashing. msg: * -> N
+    type MsgHashFn = Sha3_512;
+    // Hash fn for tree & secret hashing. sk: 2N -> N & tree: N -> N
+    type TreeHashFn = Sha3_256;
 
-    //     //
-    //     // Bob verifies
-    //     //
-    //     let bob_from_alice_valid = Signer::verify(msg, &alice_sign, &alice_key_pair.public);
-    //     assert!(bob_from_alice_valid, "The valid signature was rejected!");
+    // ---
 
-    //     let bob_from_eve_valid = Signer::verify(msg, &eve_sign, &alice_key_pair.public);
-    //     assert!(!bob_from_eve_valid, "The invalid signature was accepted!");
-    // }
+    const TAUPLUS: usize = TAU + 1;
+    const T: usize = 2_usize.pow(TAU as u32);
+    const MSG_HASH_SIZE: usize = (K * TAU) / 8;
+    const TREE_HASH_SIZE: usize = N;
+
+    type Signer = HorstSigScheme<
+        N,
+        K,
+        TAU,
+        TAUPLUS,
+        T,
+        MSG_HASH_SIZE,
+        TREE_HASH_SIZE,
+        CsPrng,
+        MsgHashFn,
+        TreeHashFn,
+    >;
+
+    #[test]
+    fn test_horst_sign_verify() {
+        let msg = b"Hello, world!";
+
+        let mut alice_signer = Signer::new(SEED);
+        let mut eve_signer = Signer::new(SEED + 1);
+
+        //
+        // Alice signs
+        //
+        let alice_key_pair = alice_signer.gen_key_pair();
+        let alice_sign = alice_signer.sign(msg);
+
+        //
+        // Eve attacker signs
+        //
+        let _eve_key_pair = eve_signer.gen_key_pair();
+        let eve_sign = eve_signer.sign(msg);
+
+        //
+        // Bob verifies
+        //
+        let bob_from_alice_valid = Signer::verify(msg, &alice_sign, &alice_key_pair.public);
+        debug!("Valid signature check's result: {}", bob_from_alice_valid);
+        assert!(bob_from_alice_valid, "The valid signature was rejected!");
+
+        let bob_from_eve_valid = Signer::verify(msg, &eve_sign, &alice_key_pair.public);
+        debug!("Invalid signature check's result: {}", bob_from_eve_valid);
+        assert!(!bob_from_eve_valid, "The invalid signature was accepted!");
+    }
 }
