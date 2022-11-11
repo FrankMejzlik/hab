@@ -4,9 +4,8 @@ use std::fmt::{Display, Formatter, Result};
 use hex::encode;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use rand_chacha::ChaCha20Rng;
-use rand_core::{RngCore, SeedableRng};
-use sha3::{Digest, Sha3_256, Sha3_512};
+use rand_core::{CryptoRng, RngCore, SeedableRng};
+use sha3::Digest;
 // ---
 use crate::box_array;
 use crate::merkle_tree::MerkleTree;
@@ -26,7 +25,7 @@ use crate::utils;
 /// * F: {0, 1}* -> {0, 1}^{K * log_2(T)}
 /// A hash function for hasing a message of arbitrary length.
 ///
-/// ### `ImplSecretKeyHashFn`
+/// ### `ImplSecretTreeHash`
 /// * G: {0, 1}^N -> {0, 1}^N
 /// A hash function for hasing a secret key numbers to their public counterparts.
 ///
@@ -40,22 +39,7 @@ use crate::utils;
 /// Cryptographically safe pseudorandom number generator.
 ///
 
-// --- Hash functions ---
-type ImplMessageHashFn = Sha3_512;
-type ImplSecretKeyHashFn = Sha3_256;
-type ImplMerkleHashFn = Sha3_256;
-
-// --- Random generators ---
-/// A seedable CSPRNG used for number generation
-type ImplCsPrng = ChaCha20Rng;
-
-/// ***************************************
-///           INFERED PARAMETERS
-/// ***************************************
-type ImplSecretKey<const T: usize, const N: usize> = HorstSecretKey<T, N>;
-type ImplPublicKey<const N: usize> = HorstPublicKey<N>;
-
-impl<const T: usize, const N: usize> Display for KeyPair<ImplSecretKey<T, N>, ImplPublicKey<N>> {
+impl<const T: usize, const N: usize> Display for KeyPair<HorstSecretKey<T, N>, HorstPublicKey<N>> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(
             f,
@@ -70,7 +54,7 @@ pub struct HorstSecretKey<const T: usize, const TREE_HASH_SIZE: usize> {
     data: Box<[[u8; TREE_HASH_SIZE]; T]>,
 }
 impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SIZE> {
-    fn new(rng: &mut ImplCsPrng) -> Self {
+    fn new(rng: &mut impl RngCore) -> Self {
         // Allocate the memory
         let mut data = box_array![[0u8; TREE_HASH_SIZE]; T];
 
@@ -161,8 +145,11 @@ pub struct HorstSigScheme<
     const T: usize,
     const MSG_HASH_SIZE: usize,
     const TREE_HASH_SIZE: usize,
+    CsPrng: CryptoRng + SeedableRng + RngCore,
+    MsgHashFn: Digest,
+    TreeHash: Digest,
 > {
-    rng: <Self as SignatureScheme<N, K, TAU>>::CsRng,
+    rng: <Self as SignatureScheme<N, K, TAU, CsPrng, MsgHashFn, TreeHash>>::CsPrng,
     secret: Option<HorstSecretKey<T, TREE_HASH_SIZE>>,
     tree: Option<MerkleTree<TREE_HASH_SIZE>>,
     public: Option<HorstPublicKey<TREE_HASH_SIZE>>,
@@ -176,7 +163,22 @@ impl<
         const T: usize,
         const MSG_HASH_SIZE: usize,
         const TREE_HASH_SIZE: usize,
-    > HorstSigScheme<N, K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE>
+        CsPrng: CryptoRng + SeedableRng + RngCore,
+        MsgHashFn: Digest,
+        TreeHash: Digest,
+    >
+    HorstSigScheme<
+        N,
+        K,
+        TAU,
+        TAUPLUS,
+        T,
+        MSG_HASH_SIZE,
+        TREE_HASH_SIZE,
+        CsPrng,
+        MsgHashFn,
+        TreeHash,
+    >
 {
 }
 
@@ -188,15 +190,28 @@ impl<
         const T: usize,
         const MSG_HASH_SIZE: usize,
         const TREE_HASH_SIZE: usize,
-    > SignatureScheme<N, K, TAU>
-    for HorstSigScheme<N, K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE>
+        CsPrng: CryptoRng + SeedableRng + RngCore,
+        MsgHashFn: Digest,
+        TreeHash: Digest,
+    > SignatureScheme<N, K, TAU, CsPrng, MsgHashFn, TreeHash>
+    for HorstSigScheme<
+        N,
+        K,
+        TAU,
+        TAUPLUS,
+        T,
+        MSG_HASH_SIZE,
+        TREE_HASH_SIZE,
+        CsPrng,
+        MsgHashFn,
+        TreeHash,
+    >
 {
-    type CsRng = ImplCsPrng;
-    type MsgHashFn = ImplMessageHashFn;
-    type KeyHashFn = ImplSecretKeyHashFn;
-    type TreeHash = ImplMerkleHashFn;
-    type SecretKey = ImplSecretKey<T, TREE_HASH_SIZE>;
-    type PublicKey = ImplPublicKey<TREE_HASH_SIZE>;
+    type CsPrng = CsPrng;
+    type MsgHashFn = MsgHashFn;
+    type TreeHash = TreeHash;
+    type SecretKey = HorstSecretKey<T, TREE_HASH_SIZE>;
+    type PublicKey = HorstPublicKey<TREE_HASH_SIZE>;
     type Signature = HorstSignature<TREE_HASH_SIZE, K, TAUPLUS>;
 
     type MsgHashBlock = [u8; MSG_HASH_SIZE];
@@ -212,7 +227,7 @@ impl<
             "The output size of a message hash function must be multiple of TAU"
         );
 
-        let rng = Self::CsRng::seed_from_u64(seed);
+        let rng = Self::CsPrng::seed_from_u64(seed);
         HorstSigScheme {
             rng,
             secret: None,
@@ -272,7 +287,7 @@ impl<
                 // SK
                 if j == 0 {
                     // Hash the secret segment
-                    parent_hash = Self::KeyHashFn::digest(s);
+                    parent_hash = Self::TreeHash::digest(s);
                 }
                 // Auth path
                 else {
@@ -330,45 +345,43 @@ impl<
 }
 #[cfg(test)]
 mod tests {
-    use std::vec::Vec;
     // ---
-    use sha3::{Digest, Sha3_256};
+    use sha3::Digest;
     use std::println as debug;
 
     // ---
     use super::*;
-    use crate::utils;
 
-    #[test]
-    fn test_horst_sign_verify() {
-        let msg = b"Hello, world!";
+    // #[test]
+    // fn test_horst_sign_verify() {
+    //     let msg = b"Hello, world!";
 
-        let mut alice_signer = Signer::new(args.seed);
-        let mut eve_signer = Signer::new(args.seed + 1);
+    //     let mut alice_signer = Signer::new(args.seed);
+    //     let mut eve_signer = Signer::new(args.seed + 1);
 
-        //
-        // Alice signs
-        //
-        let alice_key_pair = alice_signer.gen_key_pair();
-        debug!("{}", alice_key_pair);
-        let alice_sign = alice_signer.sign(msg);
-        //debug!("{}", alice_sign);
+    //     //
+    //     // Alice signs
+    //     //
+    //     let alice_key_pair = alice_signer.gen_key_pair();
+    //     debug!("{}", alice_key_pair);
+    //     let alice_sign = alice_signer.sign(msg);
+    //     //debug!("{}", alice_sign);
 
-        //
-        // Eve attacker signs
-        //
-        let _eve_key_pair = eve_signer.gen_key_pair();
-        //debug!("{}", eve_key_pair);
-        let eve_sign = eve_signer.sign(msg);
-        //debug!("{}", eve_sign);
+    //     //
+    //     // Eve attacker signs
+    //     //
+    //     let _eve_key_pair = eve_signer.gen_key_pair();
+    //     //debug!("{}", eve_key_pair);
+    //     let eve_sign = eve_signer.sign(msg);
+    //     //debug!("{}", eve_sign);
 
-        //
-        // Bob verifies
-        //
-        let bob_from_alice_valid = Signer::verify(msg, &alice_sign, &alice_key_pair.public);
-        assert!(bob_from_alice_valid, "The valid signature was rejected!");
+    //     //
+    //     // Bob verifies
+    //     //
+    //     let bob_from_alice_valid = Signer::verify(msg, &alice_sign, &alice_key_pair.public);
+    //     assert!(bob_from_alice_valid, "The valid signature was rejected!");
 
-        let bob_from_eve_valid = Signer::verify(msg, &eve_sign, &alice_key_pair.public);
-        assert!(!bob_from_eve_valid, "The invalid signature was accepted!");
-    }
+    //     let bob_from_eve_valid = Signer::verify(msg, &eve_sign, &alice_key_pair.public);
+    //     assert!(!bob_from_eve_valid, "The invalid signature was accepted!");
+    // }
 }

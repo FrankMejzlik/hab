@@ -7,10 +7,17 @@ pub struct KeyPair<GSecretKey, GPublicKey> {
     pub public: GPublicKey,
 }
 
-pub trait SignatureScheme<const N: usize, const K: usize, const TAU: usize> {
-    type CsRng: CryptoRng + SeedableRng + RngCore;
+pub trait SignatureScheme<
+    const N: usize,
+    const K: usize,
+    const TAU: usize,
+    CsPrng: CryptoRng + SeedableRng + RngCore,
+    MsgHashFn: Digest,
+    TreeHash: Digest,
+>
+{
+    type CsPrng: CryptoRng + SeedableRng + RngCore;
     type MsgHashFn: Digest;
-    type KeyHashFn: Digest;
     type TreeHash: Digest;
     type SecretKey;
     type PublicKey;

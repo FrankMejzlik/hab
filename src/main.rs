@@ -9,6 +9,8 @@ use cfg_if::cfg_if;
 use clap::Parser;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use rand_chacha::ChaCha20Rng;
+use sha3::{Sha3_256, Sha3_512};
 use simple_logger::SimpleLogger;
 // ---
 use horst::HorstSigScheme;
@@ -26,6 +28,16 @@ cfg_if! {
         const K: usize = 32;
         /// Depth of the Merkle tree (without the root layer)
         const TAU: usize = 16;
+
+        // --- Random generators ---
+        /// A seedable CSPRNG used for number generation
+        type CsPrng = ChaCha20Rng;
+
+        // --- Hash functions ---
+        // Hash fn for message hashing. msg: * -> N
+        type MsgHashFn = Sha3_512;
+        // Hash fn for tree & secret hashing. sk: 2N -> N & tree: N -> N
+        type TreeHashFn = Sha3_256;
     }
     // *** DEBUG ***
     else {
@@ -35,6 +47,16 @@ cfg_if! {
         const K: usize = 128;
         /// Depth of the Merkle tree (without the root layer)
         const TAU: usize = 4;
+
+        // --- Random generators ---
+        /// A seedable CSPRNG used for number generation
+        type CsPrng = ChaCha20Rng;
+
+        // --- Hash functions ---
+        // Hash fn for message hashing. msg: * -> N
+        type MsgHashFn = Sha3_512;
+        // Hash fn for tree & secret hashing. sk: 2N -> N & tree: N -> N
+        type TreeHashFn = Sha3_256;
     }
 }
 
@@ -44,7 +66,18 @@ const T: usize = 2_usize.pow(TAU as u32);
 const MSG_HASH_SIZE: usize = (K * TAU) / 8;
 const TREE_HASH_SIZE: usize = N;
 
-type Signer = HorstSigScheme<N, K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE>;
+type Signer = HorstSigScheme<
+    N,
+    K,
+    TAU,
+    TAUPLUS,
+    T,
+    MSG_HASH_SIZE,
+    TREE_HASH_SIZE,
+    CsPrng,
+    MsgHashFn,
+    TreeHashFn,
+>;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
