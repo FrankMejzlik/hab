@@ -27,13 +27,17 @@
 //! * `ImplCsPrng` - Cryptographically safe pseudo-random number generator.
 //!
 use std::boxed::Box;
-use std::fmt::{Display, Formatter, Result};
+use std::fmt::{Display, Formatter};
 // ---
+use ::slice_of_array::prelude::*;
 use hex::encode;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use rand_core::{CryptoRng, RngCore, SeedableRng};
+use serde::ser::{SerializeStruct, Serializer};
+use serde::{Deserialize, Serialize};
 use sha3::Digest;
+
 // ---
 use crate::box_array;
 use crate::merkle_tree::MerkleTree;
@@ -44,7 +48,7 @@ pub type HorstKeypair<const T: usize, const N: usize> =
     KeyPair<HorstSecretKey<T, N>, HorstPublicKey<N>>;
 
 impl<const T: usize, const N: usize> Display for KeyPair<HorstSecretKey<T, N>, HorstPublicKey<N>> {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         writeln!(
             f,
             "\n--- SECRET ---\n{}\n--- PUBLIC ---\n{}",
@@ -77,7 +81,7 @@ impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SI
 }
 
 impl<const T: usize, const N: usize> Display for HorstSecretKey<T, N> {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         writeln!(f, "<<< HorstSecretKey >>>")?;
         writeln!(f, "\t[{:0>5}]: {}", 0, encode(&self.data[0]))?;
         writeln!(f, "\t[{:0>5}]: {}", 1, encode(&self.data[1]))?;
@@ -94,7 +98,7 @@ pub struct HorstPublicKey<const N: usize> {
     data: Box<[u8; N]>,
 }
 impl<const N: usize> HorstPublicKey<N> {
-    fn new(root_hash: &[u8; N]) -> Self {
+    pub fn new(root_hash: &[u8; N]) -> Self {
         let mut data = Box::new([0u8; N]);
         data.copy_from_slice(root_hash);
 
@@ -102,12 +106,23 @@ impl<const N: usize> HorstPublicKey<N> {
     }
 }
 impl<const N: usize> Display for HorstPublicKey<N> {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         writeln!(
             f,
             "<<< HorstPublicKey >>>\n\t[00000]: {}",
             utils::to_hex(&*self.data)
         )
+    }
+}
+impl<const N: usize> Serialize for HorstPublicKey<N> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // 3 is the number of fields in the struct.
+        let mut state = serializer.serialize_struct("HorstPublicKey", 1)?;
+        state.serialize_field("data", self.data.as_slice())?;
+        state.end()
     }
 }
 
@@ -116,15 +131,28 @@ pub struct HorstSignature<const N: usize, const K: usize, const TAUPLUS: usize> 
     data: [[[u8; N]; TAUPLUS]; K],
 }
 impl<const N: usize, const K: usize, const TAUPLUS: usize> HorstSignature<N, K, TAUPLUS> {
-    fn new(data: [[[u8; N]; TAUPLUS]; K]) -> Self {
+    pub fn new(data: [[[u8; N]; TAUPLUS]; K]) -> Self {
         HorstSignature { data }
+    }
+}
+impl<const N: usize, const K: usize, const TAUPLUS: usize> Serialize
+    for HorstSignature<N, K, TAUPLUS>
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // 3 is the number of fields in the struct.
+        let mut state = serializer.serialize_struct("HorstPublicKey", 1)?;
+        state.serialize_field("data", self.data.flat().flat())?;
+        state.end()
     }
 }
 
 impl<const N: usize, const K: usize, const TAUPLUS: usize> Display
     for HorstSignature<N, K, TAUPLUS>
 {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         writeln!(f, "<<< HorstSignature >>>")?;
 
         for (i, segment) in self.data.into_iter().enumerate() {

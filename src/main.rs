@@ -1,12 +1,14 @@
 //!
 //! <PROJECT_NAME> is an implementation of the hash-based authentication protocol for streamed data.
 //!
+mod block_signer;
+mod broadcaster;
 #[allow(clippy::assertions_on_constants)]
 mod horst;
-mod signer_keystore;
 mod merkle_tree;
-mod block_signer;
+mod receiver;
 mod signature_scheme;
+mod signer_keystore;
 mod utils;
 
 // ---
@@ -19,6 +21,7 @@ use sha3::{Sha3_256, Sha3_512};
 use simple_logger::SimpleLogger;
 // ---
 use block_signer::{BlockSigner, BlockSignerParams};
+use broadcaster::{Broadcaster, BroadcasterError, BroadcasterParams};
 
 // ***************************************
 //             PARAMETERS
@@ -70,8 +73,18 @@ const T: usize = 2_usize.pow(TAU as u32);
 const MSG_HASH_SIZE: usize = (K * TAU) / 8;
 const TREE_HASH_SIZE: usize = N;
 
-type BlockSignerTyped =
-    BlockSigner<N, K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>;
+type BlockSignerTyped = BlockSigner<
+    N,
+    K,
+    TAU,
+    TAUPLUS,
+    T,
+    MSG_HASH_SIZE,
+    TREE_HASH_SIZE,
+    CsPrng,
+    MsgHashFn,
+    TreeHashFn,
+>;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -86,8 +99,24 @@ fn main() {
     SimpleLogger::new().without_timestamps().init().unwrap();
     let args = Args::parse();
 
-    let _msg = b"Hello, world!";
-
     let params = BlockSignerParams { seed: args.seed };
-    let _sender = BlockSignerTyped::new(params);
+    let bcaster_params = BroadcasterParams {};
+
+    let msg = b"Hello, world!";
+
+    let mut signer = BlockSignerTyped::new(params);
+
+    let packet = match signer.sign(msg) {
+        Ok(x) => x,
+        Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
+    };
+
+    debug!("packet: {} B", std::mem::size_of_val(&packet));
+
+    let bcaster = Broadcaster::new(bcaster_params);
+    let packet_bytes = packet.to_bytes();
+    match bcaster.broadcast(&packet_bytes) {
+        Ok(()) => debug!("Packet broadcasted."),
+        Err(e) => panic!("Failed to broadcast the data block!\nERROR: {:?}", e),
+    };
 }

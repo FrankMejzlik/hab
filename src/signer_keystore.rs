@@ -10,10 +10,12 @@ use log::{debug, error, info, trace, warn};
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use sha3::Digest;
 // ---
-use crate::horst::{HorstKeypair, HorstPublicKey, HorstSecretKey, HorstSigScheme, HorstSignature};
+use crate::horst::{HorstKeypair, HorstSecretKey, HorstSigScheme};
 use crate::signature_scheme::SignatureScheme;
 use crate::utils;
 use crate::utils::UnixTimestamp;
+
+pub use crate::horst::{HorstPublicKey as PublicKey, HorstSignature as Signature};
 
 ///
 /// Wrapper for one key.
