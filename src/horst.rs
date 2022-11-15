@@ -40,6 +40,9 @@ use crate::merkle_tree::MerkleTree;
 use crate::signature_scheme::{KeyPair, SignatureScheme};
 use crate::utils;
 
+pub type HorstKeypair<const T: usize, const N: usize> =
+    KeyPair<HorstSecretKey<T, N>, HorstPublicKey<N>>;
+
 impl<const T: usize, const N: usize> Display for KeyPair<HorstSecretKey<T, N>, HorstPublicKey<N>> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(

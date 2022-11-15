@@ -11,6 +11,12 @@ pub struct KeyPair<GSecretKey, GPublicKey> {
     pub public: GPublicKey,
 }
 
+impl<GSecretKey, GPublicKey> KeyPair<GSecretKey, GPublicKey> {
+    fn new(secret: GSecretKey, public: GPublicKey) -> Self {
+        KeyPair { secret, public }
+    }
+}
+
 pub trait SignatureScheme<
     const N: usize,
     const K: usize,

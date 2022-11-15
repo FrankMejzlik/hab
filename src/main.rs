@@ -3,7 +3,9 @@
 //!
 #[allow(clippy::assertions_on_constants)]
 mod horst;
+mod signer_keystore;
 mod merkle_tree;
+mod block_signer;
 mod signature_scheme;
 mod utils;
 
@@ -16,8 +18,7 @@ use rand_chacha::ChaCha20Rng;
 use sha3::{Sha3_256, Sha3_512};
 use simple_logger::SimpleLogger;
 // ---
-use horst::HorstSigScheme;
-use signature_scheme::SignatureScheme;
+use block_signer::{BlockSigner, BlockSignerParams};
 
 // ***************************************
 //             PARAMETERS
@@ -69,18 +70,8 @@ const T: usize = 2_usize.pow(TAU as u32);
 const MSG_HASH_SIZE: usize = (K * TAU) / 8;
 const TREE_HASH_SIZE: usize = N;
 
-type Signer = HorstSigScheme<
-    N,
-    K,
-    TAU,
-    TAUPLUS,
-    T,
-    MSG_HASH_SIZE,
-    TREE_HASH_SIZE,
-    CsPrng,
-    MsgHashFn,
-    TreeHashFn,
->;
+type BlockSignerTyped =
+    BlockSigner<N, K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -95,35 +86,8 @@ fn main() {
     SimpleLogger::new().without_timestamps().init().unwrap();
     let args = Args::parse();
 
-    let msg = b"Hello, world!";
+    let _msg = b"Hello, world!";
 
-    let mut alice_signer = Signer::new(args.seed);
-    let mut eve_signer = Signer::new(args.seed + 1);
-
-    //
-    // Alice signs
-    //
-    let alice_key_pair = alice_signer.gen_key_pair();
-    debug!("{}", alice_key_pair);
-    let alice_sign = alice_signer.sign(msg);
-    debug!("{}", alice_sign);
-
-    //
-    // Eve attacker signs
-    //
-    let _eve_key_pair = eve_signer.gen_key_pair();
-    // debug!("{}", eve_key_pair);
-    let eve_sign = eve_signer.sign(msg);
-    // debug!("{}", eve_sign);
-
-    //
-    // Bob verifies
-    //
-    let bob_from_alice_valid = Signer::verify(msg, &alice_sign, &alice_key_pair.public);
-    debug!("Valid signature check's result: {}", bob_from_alice_valid);
-    assert!(bob_from_alice_valid, "The valid signature was rejected!");
-
-    let bob_from_eve_valid = Signer::verify(msg, &eve_sign, &alice_key_pair.public);
-    debug!("Invalid signature check's result: {}", bob_from_eve_valid);
-    assert!(!bob_from_eve_valid, "The invalid signature was accepted!");
+    let params = BlockSignerParams { seed: args.seed };
+    let _sender = BlockSignerTyped::new(params);
 }
