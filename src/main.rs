@@ -2,15 +2,17 @@
 //! <PROJECT_NAME> is an implementation of the hash-based authentication protocol for streamed data.
 //!
 mod block_signer;
-mod broadcaster;
 #[allow(clippy::assertions_on_constants)]
 mod horst;
 mod merkle_tree;
-mod receiver;
+mod net_receiver;
+mod net_sender;
+mod sender;
 mod signature_scheme;
 mod signer_keystore;
 mod utils;
 
+use std::mem::size_of_val;
 // ---
 use cfg_if::cfg_if;
 use clap::Parser;
@@ -21,7 +23,7 @@ use sha3::{Sha3_256, Sha3_512};
 use simple_logger::SimpleLogger;
 // ---
 use block_signer::{BlockSigner, BlockSignerParams};
-use broadcaster::{Broadcaster, BroadcasterError, BroadcasterParams};
+use net_sender::{NetSender, NetSenderError, NetSenderParams};
 
 // ***************************************
 //             PARAMETERS
@@ -100,7 +102,7 @@ fn main() {
     let args = Args::parse();
 
     let params = BlockSignerParams { seed: args.seed };
-    let bcaster_params = BroadcasterParams {};
+    let net_sender_params = NetSenderParams {};
 
     let msg = b"Hello, world!";
 
@@ -111,11 +113,11 @@ fn main() {
         Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
     };
 
-    debug!("packet: {} B", std::mem::size_of_val(&packet));
+    debug!("packet: {} B", size_of_val(&packet));
 
-    let bcaster = Broadcaster::new(bcaster_params);
+    let net_sender = NetSender::new(net_sender_params);
     let packet_bytes = packet.to_bytes();
-    match bcaster.broadcast(&packet_bytes) {
+    match net_sender.broadcast(&packet_bytes) {
         Ok(()) => debug!("Packet broadcasted."),
         Err(e) => panic!("Failed to broadcast the data block!\nERROR: {:?}", e),
     };
