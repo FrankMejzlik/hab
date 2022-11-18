@@ -3,6 +3,7 @@
 //!
 
 use crate::net_sender::{NetSender, NetSenderParams};
+use crate::traits::Sender as SenderTrait;
 
 pub struct SenderParams {
     pub seed: u64,
@@ -19,3 +20,5 @@ impl Sender {
         Sender {}
     }
 }
+
+impl SenderTrait for Sender {}

@@ -11,7 +11,7 @@ use rand_core::{CryptoRng, RngCore, SeedableRng};
 use sha3::Digest;
 // ---
 use crate::horst::{HorstKeypair, HorstSecretKey, HorstSigScheme};
-use crate::signature_scheme::SignatureScheme;
+use crate::traits::SignatureScheme;
 use crate::utils;
 use crate::utils::UnixTimestamp;
 

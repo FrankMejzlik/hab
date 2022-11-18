@@ -41,7 +41,7 @@ use sha3::Digest;
 // ---
 use crate::box_array;
 use crate::merkle_tree::MerkleTree;
-use crate::signature_scheme::{KeyPair, SignatureScheme};
+use crate::traits::{KeyPair, SignatureScheme};
 use crate::utils;
 
 pub type HorstKeypair<const T: usize, const N: usize> =
@@ -181,7 +181,7 @@ pub struct HorstSigScheme<
     MsgHashFn: Digest,
     TreeHash: Digest,
 > {
-    rng: <Self as SignatureScheme<N, K, TAU, CsPrng, MsgHashFn, TreeHash>>::CsPrng,
+    rng: <Self as SignatureScheme>::CsPrng,
     secret: Option<HorstSecretKey<T, TREE_HASH_SIZE>>,
     tree: Option<MerkleTree<TREE_HASH_SIZE>>,
     public: Option<HorstPublicKey<TREE_HASH_SIZE>>,
@@ -225,7 +225,7 @@ impl<
         CsPrng: CryptoRng + SeedableRng + RngCore,
         MsgHashFn: Digest,
         TreeHash: Digest,
-    > SignatureScheme<N, K, TAU, CsPrng, MsgHashFn, TreeHash>
+    > SignatureScheme
     for HorstSigScheme<
         N,
         K,

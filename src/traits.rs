@@ -1,10 +1,13 @@
 //!
-//! Module defining the general interface of a hash-based signature scheme.
+//! Module defining the general interfaces.
 //!
 
+use std::error::Error as StdError;
 // ---
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use sha3::Digest;
+
+pub trait Error {}
 
 pub struct KeyPair<GSecretKey, GPublicKey> {
     pub secret: GSecretKey,
@@ -17,15 +20,7 @@ impl<GSecretKey, GPublicKey> KeyPair<GSecretKey, GPublicKey> {
     }
 }
 
-pub trait SignatureScheme<
-    const N: usize,
-    const K: usize,
-    const TAU: usize,
-    CsPrng: CryptoRng + SeedableRng + RngCore,
-    MsgHashFn: Digest,
-    TreeHash: Digest,
->
-{
+pub trait SignatureScheme {
     type CsPrng: CryptoRng + SeedableRng + RngCore;
     type MsgHashFn: Digest;
     type TreeHash: Digest;
@@ -45,3 +40,32 @@ pub trait SignatureScheme<
     fn secret_key(&self) -> Option<&Self::SecretKey>;
     fn public_key(&self) -> Option<&Self::PublicKey>;
 }
+
+///
+/// Provides an interface for broadcasting the data blocks to the subscribed
+/// receivers over the computer network.
+///
+pub trait NetworkSender {
+    type Error: StdError;
+
+    ///
+    /// Sends the provided data to the currently subscribed receivers.
+    ///
+    fn broadcast(&self, data: &[u8]) -> Result<(), Self::Error>;
+}
+
+///
+/// Provides a high-level interface for broadcasting the signed data to the subscribed receivers.
+///
+/// # See
+/// * `trait Receiver`
+///
+pub trait Sender {}
+
+///
+/// Provides a high-level interface for receiving the signed data from the desired source sender.
+///
+/// # See
+/// * `trait Sender`
+///
+pub trait Receiver {}
