@@ -69,3 +69,14 @@ pub trait Sender {}
 /// * `trait Sender`
 ///
 pub trait Receiver {}
+
+
+///
+/// Interface for sending out the diagnostic data via WebSocket API.
+/// 
+pub trait DiagServer {
+	type Error: StdError;
+
+	/// Sends the JSON representation of the current state of the application.
+	fn send_state(&mut self, data: &str) -> Result<(), Self::Error>;
+}

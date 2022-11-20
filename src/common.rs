@@ -61,3 +61,25 @@ pub struct Args {
     #[clap(short, long, default_value_t = 42)]
     pub seed: u64,
 }
+
+
+pub fn setup_logger() -> Result<(), fern::InitError> {
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}] {}",
+                //chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+				chrono::Local::now().format("[%H:%M:%S]"),
+                record.level(),
+                message
+            ))
+        })
+		// Disable all by default
+        .level(log::LevelFilter::Off)
+		// Allow for this module
+		.level_for("hashsig", log::LevelFilter::Trace)
+        .chain(std::io::stdout())
+        .chain(fern::log_file("output.log")?)
+        .apply()?;
+    Ok(())
+}
