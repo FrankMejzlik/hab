@@ -8,7 +8,7 @@ use std::{mem::size_of_val, thread};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 // ---
-use crate::block_signer::BlockSignerParams;
+use crate::block_signer::{BlockSignerParams, BlockSignerTrait};
 use crate::config::BlockSignerInst;
 use crate::net_sender::{NetSender, NetSenderParams};
 use crate::traits::SenderTrait;
@@ -27,7 +27,7 @@ pub struct Sender {
 impl Sender {
     pub fn new(params: SenderParams) -> Self {
         let block_signer_params = BlockSignerParams { seed: params.seed };
-        let mut signer = BlockSignerInst::new(block_signer_params);
+        let signer = BlockSignerInst::new(block_signer_params);
 
         let net_sender_params = NetSenderParams {};
         let net_sender = NetSender::new(net_sender_params);

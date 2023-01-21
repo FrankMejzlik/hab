@@ -17,7 +17,7 @@ pub struct NetReceiverParams {}
 pub struct NetReceiver {}
 
 impl NetReceiver {
-    pub fn new(params: NetReceiverParams) -> Self {
+    pub fn new(_params: NetReceiverParams) -> Self {
         NetReceiver {}
     }
 }

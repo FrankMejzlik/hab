@@ -10,13 +10,14 @@ use sha3::Digest;
 
 pub trait Error {}
 
+#[derive(Clone)]
 pub struct KeyPair<GSecretKey, GPublicKey> {
     pub secret: GSecretKey,
     pub public: GPublicKey,
 }
 
 impl<GSecretKey, GPublicKey> KeyPair<GSecretKey, GPublicKey> {
-    fn new(secret: GSecretKey, public: GPublicKey) -> Self {
+    pub fn new(secret: GSecretKey, public: GPublicKey) -> Self {
         KeyPair { secret, public }
     }
 }

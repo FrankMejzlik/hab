@@ -367,10 +367,7 @@ impl<
         let sk = Self::SecretKey::new::<Self::TreeHash, Self::CsPrng>(rng);
         let pk = Self::PublicKey::new(sk.tree.root());
 
-        KeyPair {
-            secret: sk,
-            public: pk,
-        }
+        KeyPair::new(sk, pk)
     }
 }
 #[cfg(test)]

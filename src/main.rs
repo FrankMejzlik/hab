@@ -27,7 +27,7 @@ use diag_server::DiagServer;
 use sender::{Sender, SenderParams};
 
 #[allow(dead_code)]
-fn run_diag_server(args: Args) {
+fn run_diag_server(_args: Args) {
     info!("Running a diag server...");
 
     let mut diag_server = DiagServer::new("127.0.0.1:9000".parse().unwrap());
