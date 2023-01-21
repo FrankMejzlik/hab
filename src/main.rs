@@ -1,129 +1,89 @@
 //!
 //! <PROJECT_NAME> is an implementation of the hash-based authentication protocol for streamed data.
 //!
+mod block_signer;
+mod common;
+mod config;
 #[allow(clippy::assertions_on_constants)]
 mod horst;
 mod merkle_tree;
-mod signature_scheme;
+mod net_receiver;
+mod net_sender;
+mod sender;
+mod signer_keystore;
+mod traits;
 mod utils;
+mod diag_server;
 
+use std::{
+    mem::size_of_val,
+    thread, 
+};
 // ---
-use cfg_if::cfg_if;
 use clap::Parser;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use rand_chacha::ChaCha20Rng;
-use sha3::{Sha3_256, Sha3_512};
-use simple_logger::SimpleLogger;
 // ---
-use horst::HorstSigScheme;
-use signature_scheme::SignatureScheme;
+use block_signer::BlockSignerParams;
+use common::{Args, ProgramMode};
+use config::BlockSignerInst;
+use net_sender::{NetSender, NetSenderParams};
+use diag_server::DiagServer;
+use crate::traits::DiagServer as DiagServerTrait;
 
-// ***************************************
-//             PARAMETERS
-// ***************************************
-cfg_if! {
-    // *** PRODUCTION ***
-    if #[cfg(not(feature = "debug"))] {
-        /// Size of the hashes in a Merkle tree
-        const N: usize = 256 / 8;
-        /// Number of SK segments in signature
-        const K: usize = 32;
-        /// Depth of the Merkle tree (without the root layer)
-        const TAU: usize = 16;
 
-        // --- Random generators ---
-        /// A seedable CSPRNG used for number generation
-        type CsPrng = ChaCha20Rng;
+fn run_sender(args: Args) {
+    info!("Running a sender...");
 
-        // --- Hash functions ---
-        // Hash fn for message hashing. msg: * -> N
-        type MsgHashFn = Sha3_512;
-        // Hash fn for tree & secret hashing. sk: 2N -> N & tree: N -> N
-        type TreeHashFn = Sha3_256;
-    }
-    // *** DEBUG ***
-    else {
-        /// Size of the hashes in a Merkle tree
-        const N: usize = 256 / 8;
-        /// Number of SK segments in signature
-        const K: usize = 128;
-        /// Depth of the Merkle tree (without the root layer)
-        const TAU: usize = 4;
+	let mut diag_server = DiagServer::new("127.0.0.1:9000".parse().unwrap());
 
-        // --- Random generators ---
-        /// A seedable CSPRNG used for number generation
-        type CsPrng = ChaCha20Rng;
+	loop {
+		let msg = format!("{}", utils::unix_ts());
+		diag_server.send_state(&msg).expect("Failed to send the message!");
+		thread::sleep(std::time::Duration::from_secs(1));
+	}
 
-        // --- Hash functions ---
-        // Hash fn for message hashing. msg: * -> N
-        type MsgHashFn = Sha3_512;
-        // Hash fn for tree & secret hashing. sk: 2N -> N & tree: N -> N
-        type TreeHashFn = Sha3_256;
-    }
-}
-
-// ---
-const TAUPLUS: usize = TAU + 1;
-const T: usize = 2_usize.pow(TAU as u32);
-const MSG_HASH_SIZE: usize = (K * TAU) / 8;
-const TREE_HASH_SIZE: usize = N;
-
-type Signer = HorstSigScheme<
-    N,
-    K,
-    TAU,
-    TAUPLUS,
-    T,
-    MSG_HASH_SIZE,
-    TREE_HASH_SIZE,
-    CsPrng,
-    MsgHashFn,
-    TreeHashFn,
->;
-
-/// Simple program to greet a person
-#[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
-struct Args {
-    /// PRNG seed
-    #[clap(short, long, default_value_t = 42)]
-    seed: u64,
-}
-
-fn main() {
-    SimpleLogger::new().without_timestamps().init().unwrap();
-    let args = Args::parse();
+    let params = BlockSignerParams { seed: args.seed };
+    let net_sender_params = NetSenderParams {};
 
     let msg = b"Hello, world!";
 
-    let mut alice_signer = Signer::new(args.seed);
-    let mut eve_signer = Signer::new(args.seed + 1);
+    let mut signer = BlockSignerInst::new(params);
 
-    //
-    // Alice signs
-    //
-    let alice_key_pair = alice_signer.gen_key_pair();
-    debug!("{}", alice_key_pair);
-    let alice_sign = alice_signer.sign(msg);
-    debug!("{}", alice_sign);
+    let packet = match signer.sign(msg) {
+        Ok(x) => x,
+        Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
+    };
 
-    //
-    // Eve attacker signs
-    //
-    let _eve_key_pair = eve_signer.gen_key_pair();
-    // debug!("{}", eve_key_pair);
-    let eve_sign = eve_signer.sign(msg);
-    // debug!("{}", eve_sign);
+    debug!("packet: {} B", size_of_val(&packet));
 
-    //
-    // Bob verifies
-    //
-    let bob_from_alice_valid = Signer::verify(msg, &alice_sign, &alice_key_pair.public);
-    debug!("Valid signature check's result: {}", bob_from_alice_valid);
-    assert!(bob_from_alice_valid, "The valid signature was rejected!");
+    let net_sender = NetSender::new(net_sender_params);
+    let packet_bytes = packet.to_bytes();
+    match net_sender.broadcast(&packet_bytes) {
+        Ok(()) => debug!("Packet broadcasted."),
+        Err(e) => panic!("Failed to broadcast the data block!\nERROR: {:?}", e),
+    };
 
-    let bob_from_eve_valid = Signer::verify(msg, &eve_sign, &alice_key_pair.public);
-    debug!("Invalid signature check's result: {}", bob_from_eve_valid);
-    assert!(!bob_from_eve_valid, "The invalid signature was accepted!");
+    loop {
+        thread::sleep(std::time::Duration::from_secs(1));
+    }
+}
+
+fn run_receiver(_args: Args) {
+    info!("Running a receiver...");
+}
+
+fn main() {
+    if let Err(e) = common::setup_logger() {
+        warn!("Unable to initialize the logger!\nERROR: {}", e);
+    }
+	trace!("running");
+
+    let args = Args::parse();
+
+    // Sender mode
+    match args.mode {
+        ProgramMode::Sender => run_sender(args),
+        ProgramMode::Receiver => run_receiver(args),
+    }
 }

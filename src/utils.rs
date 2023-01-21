@@ -2,10 +2,13 @@
 //! Generally usefull functions.
 //!
 
+use std::time::{SystemTime, UNIX_EPOCH};
 // ---
 use bitreader::BitReader;
 use hex::{decode, encode};
 use log::debug;
+
+pub type UnixTimestamp = u128;
 
 /// A macro similar to `vec![$elem; $size]` which returns a boxed array.
 ///
@@ -76,6 +79,13 @@ pub fn get_segment_indices<const K: usize, const HASH_SIZE: usize, const TAU: us
     }
 
     res
+}
+/// Returns the current UNIX timestamp in milliseconds.
+pub fn unix_ts() -> UnixTimestamp {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(n) => n.as_millis(),
+        Err(_) => 0,
+    }
 }
 
 #[cfg(test)]
