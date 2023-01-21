@@ -7,7 +7,7 @@
 		{
 			"type": "lldb",
 			"request": "launch",
-			"name": "Debug executable 'hashsig'",
+			"name": "SENDER STDIN",
 			"cargo": {
 				"args": [
 					"build",
@@ -19,7 +19,43 @@
 					"kind": "bin"
 				}
 			},
-			"args": [],
+			"args": ["sender"],
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "SENDER FILE",
+			"cargo": {
+				"args": [
+					"build",
+					"--bin=hashsig",
+					"--package=hashsig"
+				],
+				"filter": {
+					"name": "hashsig",
+					"kind": "bin"
+				}
+			},
+			"args": ["sender","--input", "data.in"],
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "RECEIVER",
+			"cargo": {
+				"args": [
+					"build",
+					"--bin=hashsig",
+					"--package=hashsig"
+				],
+				"filter": {
+					"name": "hashsig",
+					"kind": "bin"
+				}
+			},
+			"args": ["receiver"],
 			"cwd": "${workspaceFolder}"
 		},
 		{

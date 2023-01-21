@@ -2,7 +2,8 @@
 //! Module defining the general interfaces.
 //!
 
-use std::error::Error as StdError;
+use std::error::Error as ErrorTrait;
+use std::io::{Read, Write};
 // ---
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use sha3::Digest;
@@ -46,7 +47,7 @@ pub trait SignatureScheme {
 /// receivers over the computer network.
 ///
 pub trait NetworkSender {
-    type Error: StdError;
+    type Error: ErrorTrait;
 
     ///
     /// Sends the provided data to the currently subscribed receivers.
@@ -58,25 +59,28 @@ pub trait NetworkSender {
 /// Provides a high-level interface for broadcasting the signed data to the subscribed receivers.
 ///
 /// # See
-/// * `trait Receiver`
+/// * `trait ReceiverTrait`
 ///
-pub trait Sender {}
+pub trait SenderTrait {
+    fn run(&mut self, input: &dyn Read);
+}
 
 ///
 /// Provides a high-level interface for receiving the signed data from the desired source sender.
 ///
 /// # See
-/// * `trait Sender`
+/// * `trait SenderTrait`
 ///
-pub trait Receiver {}
-
+pub trait ReceiverTrait {
+    fn run(&mut self, output: &dyn Write);
+}
 
 ///
 /// Interface for sending out the diagnostic data via WebSocket API.
-/// 
-pub trait DiagServer {
-	type Error: StdError;
+///
+pub trait DiagServerTrait {
+    type Error: ErrorTrait;
 
-	/// Sends the JSON representation of the current state of the application.
-	fn send_state(&mut self, data: &str) -> Result<(), Self::Error>;
+    /// Sends the JSON representation of the current state of the application.
+    fn send_state(&mut self, data: &str) -> Result<(), Self::Error>;
 }

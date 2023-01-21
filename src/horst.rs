@@ -169,6 +169,7 @@ impl<const N: usize, const K: usize, const TAUPLUS: usize> Display
     }
 }
 
+#[derive(Default)]
 pub struct HorstSigScheme<
     const N: usize,
     const K: usize,

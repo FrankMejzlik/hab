@@ -10,8 +10,20 @@ use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use sha3::Digest;
 // ---
-use crate::horst::{HorstKeypair, HorstPublicKey, HorstSecretKey, HorstSigScheme, HorstSignature};
-use crate::signer_keystore::*;
+use crate::horst::{HorstKeypair, HorstSigScheme};
+pub use crate::horst::{HorstPublicKey as PublicKey, HorstSignature as Signature};
+use crate::traits::SignatureScheme;
+use crate::utils::UnixTimestamp;
+
+///
+/// Wrapper for one key.
+///
+struct KeyCont<const N: usize, const T: usize> {
+    key: HorstKeypair<N, T>,
+    last_cerified: UnixTimestamp,
+    signs: usize,
+    lifetime: usize,
+}
 
 #[derive(Debug)]
 pub enum BlockSignerError {
@@ -62,7 +74,7 @@ pub struct BlockSigner<
     MsgHashFn: Digest,
     TreeHashFn: Digest,
 > {
-    keystore: SignerKeystore<
+    signer: HorstSigScheme<
         N,
         K,
         TAU,
@@ -74,6 +86,7 @@ pub struct BlockSigner<
         MsgHashFn,
         TreeHashFn,
     >,
+    layers: Vec<Vec<KeyCont<N, T>>>,
 }
 
 impl<
@@ -92,9 +105,9 @@ impl<
 {
     /// Constructs and initializes a block signer with the given parameters.
     pub fn new(params: BlockSignerParams) -> Self {
-        let keystore_params = SignerKeystoreParams { seed: params.seed };
-        let keystore = SignerKeystore::new(keystore_params);
-        BlockSigner { keystore }
+        let signer = HorstSigScheme::new(params.seed);
+        let layers = vec![];
+        BlockSigner { signer, layers }
     }
 
     pub fn sign(

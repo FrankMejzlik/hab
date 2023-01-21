@@ -14,7 +14,7 @@ use websocket::{
 
 // ---
 use crate::common::Error;
-use crate::traits::DiagServer as DiagServerTrait;
+use crate::traits::DiagServerTrait;
 
 pub struct DiagServer {
     sender: Arc<Mutex<Option<Writer<TcpStream>>>>,
@@ -62,7 +62,11 @@ impl DiagServerTrait for DiagServer {
 
         if guard.is_some() {
             let msg = Message::text(data);
-            guard.as_mut().unwrap().send_message(&msg);
+            guard
+                .as_mut()
+                .unwrap()
+                .send_message(&msg)
+                .expect("Failed to send!");
         }
         Ok(())
     }

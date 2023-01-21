@@ -60,24 +60,32 @@ pub struct Args {
     /// Seed used for the CSPRNG.
     #[clap(short, long, default_value_t = 42)]
     pub seed: u64,
+    /// The input file (if none, STDIN), only aplicable with `Sender`.
+    #[clap(short, long)]
+    pub input: Option<String>,
+    /// The input file (if none, STDOUT), only aplicable with `Receiver`.
+    #[clap(short, long)]
+    pub output: Option<String>,
 }
 
-
+///
+/// Setups the logger so it ignores the debug & trace logs in the third-party libs.
+///
 pub fn setup_logger() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
                 "{}[{}] {}",
                 //chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-				chrono::Local::now().format("[%H:%M:%S]"),
+                chrono::Local::now().format("[%H:%M:%S]"),
                 record.level(),
                 message
             ))
         })
-		// Disable all by default
-        .level(log::LevelFilter::Off)
-		// Allow for this module
-		.level_for("hashsig", log::LevelFilter::Trace)
+        // Disable all by default
+        .level(log::LevelFilter::Warn)
+        // Allow for this module
+        .level_for("hashsig", log::LevelFilter::Trace)
         .chain(std::io::stdout())
         .chain(fern::log_file("output.log")?)
         .apply()?;

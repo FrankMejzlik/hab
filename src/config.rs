@@ -54,7 +54,6 @@ cfg_if! {
 }
 
 // ---
-const TAUPLUS: usize = TAU + 1;
 const T: usize = 2_usize.pow(TAU as u32);
 const MSG_HASH_SIZE: usize = (K * TAU) / 8;
 const TREE_HASH_SIZE: usize = N;
@@ -64,7 +63,7 @@ pub type BlockSignerInst = BlockSigner<
     N,
     K,
     TAU,
-    TAUPLUS,
+    { TAU + 1 },
     T,
     MSG_HASH_SIZE,
     TREE_HASH_SIZE,
