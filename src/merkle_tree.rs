@@ -9,7 +9,7 @@ use std::fmt::{Display, Formatter, Result};
 use log::{debug, error, info, trace, warn};
 // ---
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MerkleTree<const BLOCK_SIZE: usize> {
     data: Vec<[u8; BLOCK_SIZE]>,
     t: usize,

@@ -28,6 +28,7 @@
 //!
 use std::boxed::Box;
 use std::fmt::{Display, Formatter};
+use std::marker::PhantomData;
 // ---
 use ::slice_of_array::prelude::*;
 use hex::encode;
@@ -35,7 +36,7 @@ use hex::encode;
 use log::{debug, error, info, trace, warn};
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::ser::{SerializeStruct, Serializer};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sha3::Digest;
 
 // ---
@@ -60,9 +61,10 @@ impl<const T: usize, const N: usize> Display for KeyPair<HorstSecretKey<T, N>, H
 #[derive(Debug, Clone)]
 pub struct HorstSecretKey<const T: usize, const TREE_HASH_SIZE: usize> {
     data: Box<[[u8; TREE_HASH_SIZE]; T]>,
+    tree: Box<MerkleTree<TREE_HASH_SIZE>>,
 }
 impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SIZE> {
-    fn new(rng: &mut impl RngCore) -> Self {
+    fn new<TreeHash: Digest, CsPrng: CryptoRng + SeedableRng + RngCore>(rng: &mut CsPrng) -> Self {
         // Allocate the memory
         let mut data = box_array![[0u8; TREE_HASH_SIZE]; T];
 
@@ -72,7 +74,10 @@ impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SI
             // debug!("{}", utils::to_hex(block));
         }
 
-        HorstSecretKey { data }
+        // Pregenerate the tree
+        let tree = Box::new(MerkleTree::new::<TreeHash>(data.to_vec()));
+
+        HorstSecretKey { data, tree }
     }
 
     fn get(&self, idx: usize) -> [u8; TREE_HASH_SIZE] {
@@ -182,10 +187,10 @@ pub struct HorstSigScheme<
     MsgHashFn: Digest,
     TreeHash: Digest,
 > {
-    rng: <Self as SignatureScheme>::CsPrng,
-    secret: Option<HorstSecretKey<T, TREE_HASH_SIZE>>,
-    tree: Option<MerkleTree<TREE_HASH_SIZE>>,
-    public: Option<HorstPublicKey<TREE_HASH_SIZE>>,
+    // To determine the type variance: https://stackoverflow.com/a/71276732
+    phantom0: PhantomData<CsPrng>,
+    phantom1: PhantomData<MsgHashFn>,
+    phantom2: PhantomData<TreeHash>,
 }
 
 impl<
@@ -250,7 +255,7 @@ impl<
     type MsgHashBlock = [u8; MSG_HASH_SIZE];
     type TreeHashBlock = [u8; TREE_HASH_SIZE];
 
-    fn new(seed: u64) -> Self {
+    fn new() -> Self {
         // TODO: Check the matching sizes of hashes and parameters
         assert_eq!(
             MSG_HASH_SIZE,
@@ -270,21 +275,18 @@ impl<
             "The output size of a message hash function must be multiple of TAU"
         );
 
-        let rng = Self::CsPrng::seed_from_u64(seed);
         HorstSigScheme {
-            rng,
-            secret: None,
-            tree: None,
-            public: None,
+            phantom0: PhantomData,
+            phantom1: PhantomData,
+            phantom2: PhantomData,
         }
     }
 
-    fn sign(&mut self, msg: &[u8]) -> Self::Signature {
+    fn sign(msg: &[u8], secret_key: &Self::SecretKey) -> Self::Signature {
         let mut msg_hash = [0; MSG_HASH_SIZE];
         msg_hash.copy_from_slice(&Self::MsgHashFn::digest(msg)[..MSG_HASH_SIZE]);
 
-        let tree = self.tree.as_ref().unwrap();
-        let sk = self.secret.as_ref().unwrap();
+        let tree = secret_key.tree.as_ref();
 
         let mut signature = [[[0_u8; TREE_HASH_SIZE]; TAUPLUS]; K];
 
@@ -294,7 +296,7 @@ impl<
 
         for (i, c_i) in indices.into_iter().enumerate() {
             let mut element = [[0_u8; TREE_HASH_SIZE]; TAUPLUS];
-            let sk_c_i = sk.get(c_i);
+            let sk_c_i = secret_key.get(c_i);
             let auth = tree.get_auth_path(c_i);
             assert_eq!(auth.len(), TAU, "Wrong size of auth path!");
 
@@ -361,29 +363,14 @@ impl<
 
     // ---
 
-    fn gen_key_pair(&mut self) -> KeyPair<Self::SecretKey, Self::PublicKey> {
-        let sk = Self::SecretKey::new(&mut self.rng);
-        let tree = MerkleTree::new::<Self::TreeHash>(sk.data.to_vec());
-        let pk = Self::PublicKey::new(tree.root());
-
-        // Update the Merkle tree for this SK
-        self.tree = Some(tree);
-        self.secret = Some(sk.clone());
-        self.public = Some(pk.clone());
+    fn gen_key_pair(rng: &mut Self::CsPrng) -> KeyPair<Self::SecretKey, Self::PublicKey> {
+        let sk = Self::SecretKey::new::<Self::TreeHash, Self::CsPrng>(rng);
+        let pk = Self::PublicKey::new(sk.tree.root());
 
         KeyPair {
             secret: sk,
             public: pk,
         }
-    }
-
-    // ---
-
-    fn secret_key(&self) -> Option<&Self::SecretKey> {
-        self.secret.as_ref()
-    }
-    fn public_key(&self) -> Option<&Self::PublicKey> {
-        self.public.as_ref()
     }
 }
 #[cfg(test)]

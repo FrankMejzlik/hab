@@ -2,6 +2,7 @@
 //! Module for broadcasting the signed data packets.
 //!
 
+use std::marker::PhantomData;
 // ---
 use bincode::serialize;
 #[allow(unused_imports)]
@@ -74,6 +75,7 @@ pub struct BlockSigner<
     MsgHashFn: Digest,
     TreeHashFn: Digest,
 > {
+    rng: CsPrng,
     signer: HorstSigScheme<
         N,
         K,
@@ -87,6 +89,10 @@ pub struct BlockSigner<
         TreeHashFn,
     >,
     layers: Vec<Vec<KeyCont<N, T>>>,
+    // ---
+    // To determine the type variance: https://stackoverflow.com/a/71276732
+    phantom0: PhantomData<MsgHashFn>,
+    phantom1: PhantomData<TreeHashFn>,
 }
 
 impl<
@@ -105,9 +111,16 @@ impl<
 {
     /// Constructs and initializes a block signer with the given parameters.
     pub fn new(params: BlockSignerParams) -> Self {
-        let signer = HorstSigScheme::new(params.seed);
+        let signer = HorstSigScheme::new();
         let layers = vec![];
-        BlockSigner { signer, layers }
+        let rng = CsPrng::seed_from_u64(params.seed);
+        BlockSigner {
+            rng,
+            signer,
+            layers,
+            phantom0: PhantomData,
+            phantom1: PhantomData,
+        }
     }
 
     pub fn sign(
@@ -115,6 +128,8 @@ impl<
         data: &[u8],
     ) -> Result<SignedBlock<Signature<N, K, TAUPLUS>, PublicKey<N>>, BlockSignerError> {
         let pub_keys = vec![PublicKey::new(&[0_u8; N])];
+
+        // self.signer.sign(msg);
         let signature = Signature::new([[[0_u8; N]; TAUPLUS]; K]);
 
         Ok(SignedBlock {

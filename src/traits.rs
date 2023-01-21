@@ -32,14 +32,11 @@ pub trait SignatureScheme {
     type MsgHashBlock;
     type TreeHashBlock;
 
-    fn new(seed: u64) -> Self;
+    fn new() -> Self;
     fn verify(msg: &[u8], signature: &Self::Signature, pub_key: &Self::PublicKey) -> bool;
     // ---
-    fn sign(&mut self, msg: &[u8]) -> Self::Signature;
-    fn gen_key_pair(&mut self) -> KeyPair<Self::SecretKey, Self::PublicKey>;
-    // ---
-    fn secret_key(&self) -> Option<&Self::SecretKey>;
-    fn public_key(&self) -> Option<&Self::PublicKey>;
+    fn sign(msg: &[u8], secret_key: &Self::SecretKey) -> Self::Signature;
+    fn gen_key_pair(rng: &mut Self::CsPrng) -> KeyPair<Self::SecretKey, Self::PublicKey>;
 }
 
 ///

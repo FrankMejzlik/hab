@@ -73,9 +73,10 @@ impl DiagServerTrait for DiagServer {
 }
 
 mod tests {
-
+    #[allow(unused_imports)]
     use super::*;
     // ---
+    #[allow(unused_imports)]
     use crate::utils;
     #[test]
     fn test_diag_server_mss() {
