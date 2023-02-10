@@ -11,11 +11,12 @@ use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use sha3::Digest;
 // ---
+use crate::common::Error;
 pub use crate::horst::{
     HorstKeypair, HorstPublicKey as PublicKey, HorstSecretKey as SecretKey, HorstSigScheme,
     HorstSignature as Signature,
 };
-use crate::traits::SignatureScheme;
+use crate::traits::{BlockSignerTrait, SignatureSchemeTrait};
 use crate::utils::UnixTimestamp;
 
 ///
@@ -27,11 +28,6 @@ struct KeyCont<const T: usize, const N: usize> {
     last_cerified: UnixTimestamp,
     signs: usize,
     lifetime: usize,
-}
-
-#[derive(Debug)]
-pub enum BlockSignerError {
-    FailedToSign(String),
 }
 
 /// Struct holding parameters for the sender.
@@ -77,7 +73,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
         }
     }
 
-    pub fn insert(&mut self, level: usize, keypair: HorstKeypair<T, N>) {
+    fn insert(&mut self, level: usize, keypair: HorstKeypair<T, N>) {
         let key_cont = KeyCont {
             key: keypair,
             last_cerified: 0,
@@ -89,31 +85,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
     }
 }
 
-pub trait BlockSignerTrait<
-    const N: usize,
-    const K: usize,
-    const TAU: usize,
-    const TAUPLUS: usize,
-    const T: usize,
-    const MSG_HASH_SIZE: usize,
-    const TREE_HASH_SIZE: usize,
-    CsPrng: CryptoRng + SeedableRng + RngCore,
-    MsgHashFn: Digest,
-    TreeHashFn: Digest,
->
-{
-    type Signer;
-
-    fn new(params: BlockSignerParams) -> Self;
-    fn sign(
-        &mut self,
-        data: &[u8],
-    ) -> Result<SignedBlock<Signature<TREE_HASH_SIZE, K, TAUPLUS>, PublicKey<N>>, BlockSignerError>;
-    fn next_key(&mut self) -> (&SecretKey<T, TREE_HASH_SIZE>, Vec<PublicKey<N>>);
-}
-
 pub struct BlockSigner<
-    const N: usize,
     const K: usize,
     const TAU: usize,
     const TAUPLUS: usize,
@@ -133,7 +105,6 @@ pub struct BlockSigner<
 }
 
 impl<
-        const N: usize,
         const K: usize,
         const TAU: usize,
         const TAUPLUS: usize,
@@ -143,34 +114,36 @@ impl<
         CsPrng: CryptoRng + SeedableRng + RngCore,
         MsgHashFn: Digest,
         TreeHash: Digest,
-    >
-    BlockSignerTrait<
-        N,
-        K,
-        TAU,
-        TAUPLUS,
-        T,
-        MSG_HASH_SIZE,
-        TREE_HASH_SIZE,
-        CsPrng,
-        MsgHashFn,
-        TreeHash,
-    >
-    for BlockSigner<
-        N,
-        K,
-        TAU,
-        TAUPLUS,
-        T,
-        MSG_HASH_SIZE,
-        TREE_HASH_SIZE,
-        CsPrng,
-        MsgHashFn,
-        TreeHash,
-    >
+    > BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHash>
 {
+    fn next_key(
+        &mut self,
+    ) -> (
+        &SecretKey<T, TREE_HASH_SIZE>,
+        Vec<PublicKey<TREE_HASH_SIZE>>,
+    ) {
+        let pks = vec![PublicKey::new(&[0_u8; TREE_HASH_SIZE])];
+
+        // TODO: Implement
+        (&self.layers.data[0][0].key.secret, pks)
+    }
+}
+
+impl<
+        const K: usize,
+        const TAU: usize,
+        const TAUPLUS: usize,
+        const T: usize,
+        const MSG_HASH_SIZE: usize,
+        const TREE_HASH_SIZE: usize,
+        CsPrng: CryptoRng + SeedableRng + RngCore,
+        MsgHashFn: Digest,
+        TreeHash: Digest,
+    > BlockSignerTrait
+    for BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHash>
+{
+    type Error = Error;
     type Signer = HorstSigScheme<
-        N,
         K,
         TAU,
         TAUPLUS,
@@ -181,6 +154,12 @@ impl<
         MsgHashFn,
         TreeHash,
     >;
+
+    type SecretKey = <Self::Signer as SignatureSchemeTrait>::SecretKey;
+    type PublicKey = <Self::Signer as SignatureSchemeTrait>::PublicKey;
+    type Signature = <Self::Signer as SignatureSchemeTrait>::Signature;
+    type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
+    type BlockSignerParams = BlockSignerParams;
 
     /// Constructs and initializes a block signer with the given parameters.
     fn new(params: BlockSignerParams) -> Self {
@@ -199,34 +178,23 @@ impl<
         }
     }
 
-    fn sign(
-        &mut self,
-        data: &[u8],
-    ) -> Result<SignedBlock<Signature<TREE_HASH_SIZE, K, TAUPLUS>, PublicKey<N>>, BlockSignerError>
-    {
+    fn sign(&mut self, data: &[u8]) -> Result<Self::SignedBlock, Error> {
         let (sk, pub_keys) = self.next_key();
 
         let signature = Self::Signer::sign(data, sk);
 
-        // --- check ---
+        // --- sanity check ---
         assert_eq!(
             Self::Signer::verify(data, &signature, &self.layers.data[0][0].key.public),
             true
         );
         info!("Signature check OK.");
-        // --- check ---
+        // --- sanity check ---
 
         Ok(SignedBlock {
             data: data.to_vec(),
             signature,
             pub_keys,
         })
-    }
-
-    fn next_key(&mut self) -> (&SecretKey<T, TREE_HASH_SIZE>, Vec<PublicKey<N>>) {
-        let pks = vec![PublicKey::new(&[0_u8; N])];
-
-        // TODO: Implement
-        (&self.layers.data[0][0].key.secret, pks)
     }
 }

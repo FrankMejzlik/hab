@@ -8,10 +8,10 @@ use std::{mem::size_of_val, thread};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 // ---
-use crate::block_signer::{BlockSignerParams, BlockSignerTrait};
+use crate::block_signer::BlockSignerParams;
 use crate::config::BlockSignerInst;
 use crate::net_sender::{NetSender, NetSenderParams};
-use crate::traits::SenderTrait;
+use crate::traits::{BlockSignerTrait, SenderTrait};
 
 pub struct SenderParams {
     pub seed: u64,

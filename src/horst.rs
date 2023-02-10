@@ -42,7 +42,7 @@ use sha3::Digest;
 // ---
 use crate::box_array;
 use crate::merkle_tree::MerkleTree;
-use crate::traits::{KeyPair, SignatureScheme};
+use crate::traits::{KeyPair, SignatureSchemeTrait};
 use crate::utils;
 
 pub type HorstKeypair<const T: usize, const N: usize> =
@@ -176,7 +176,6 @@ impl<const N: usize, const K: usize, const TAUPLUS: usize> Display
 
 #[derive(Default)]
 pub struct HorstSigScheme<
-    const N: usize,
     const K: usize,
     const TAU: usize,
     const TAUPLUS: usize,
@@ -194,7 +193,6 @@ pub struct HorstSigScheme<
 }
 
 impl<
-        const N: usize,
         const K: usize,
         const TAU: usize,
         const TAUPLUS: usize,
@@ -205,23 +203,11 @@ impl<
         MsgHashFn: Digest,
         TreeHash: Digest,
     >
-    HorstSigScheme<
-        N,
-        K,
-        TAU,
-        TAUPLUS,
-        T,
-        MSG_HASH_SIZE,
-        TREE_HASH_SIZE,
-        CsPrng,
-        MsgHashFn,
-        TreeHash,
-    >
+    HorstSigScheme<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHash>
 {
 }
 
 impl<
-        const N: usize,
         const K: usize,
         const TAU: usize,
         const TAUPLUS: usize,
@@ -231,9 +217,8 @@ impl<
         CsPrng: CryptoRng + SeedableRng + RngCore,
         MsgHashFn: Digest,
         TreeHash: Digest,
-    > SignatureScheme
+    > SignatureSchemeTrait
     for HorstSigScheme<
-        N,
         K,
         TAU,
         TAUPLUS,
@@ -407,7 +392,6 @@ mod tests {
     const TREE_HASH_SIZE: usize = N;
 
     type Signer = HorstSigScheme<
-        N,
         K,
         TAU,
         TAUPLUS,
@@ -423,8 +407,8 @@ mod tests {
     fn test_horst_sign_verify() {
         let msg = b"Hello, world!";
 
-        let mut alice_signer = Signer::new(SEED);
-        let mut eve_signer = Signer::new(SEED + 1);
+        let mut alice_signer = Signer::new();
+        let mut eve_signer = Signer::new();
 
         //
         // Alice signs

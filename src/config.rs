@@ -60,7 +60,6 @@ const TREE_HASH_SIZE: usize = N;
 
 // Alias for the specific signer we'll be using
 pub type BlockSignerInst = BlockSigner<
-    N,
     K,
     TAU,
     { TAU + 1 },

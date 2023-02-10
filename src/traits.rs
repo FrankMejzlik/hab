@@ -22,7 +22,20 @@ impl<GSecretKey, GPublicKey> KeyPair<GSecretKey, GPublicKey> {
     }
 }
 
-pub trait SignatureScheme {
+pub trait BlockSignerTrait {
+    type Error: ErrorTrait;
+    type Signer: SignatureSchemeTrait;
+    type BlockSignerParams;
+    type SecretKey;
+    type PublicKey;
+    type Signature;
+    type SignedBlock;
+
+    fn new(params: Self::BlockSignerParams) -> Self;
+    fn sign(&mut self, data: &[u8]) -> Result<Self::SignedBlock, Self::Error>;
+}
+
+pub trait SignatureSchemeTrait {
     type CsPrng: CryptoRng + SeedableRng + RngCore;
     type MsgHashFn: Digest;
     type TreeHash: Digest;
@@ -35,7 +48,6 @@ pub trait SignatureScheme {
 
     fn new() -> Self;
     fn verify(msg: &[u8], signature: &Self::Signature, pub_key: &Self::PublicKey) -> bool;
-    // ---
     fn sign(msg: &[u8], secret_key: &Self::SecretKey) -> Self::Signature;
     fn gen_key_pair(rng: &mut Self::CsPrng) -> KeyPair<Self::SecretKey, Self::PublicKey>;
 }
