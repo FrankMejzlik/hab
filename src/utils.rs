@@ -53,7 +53,7 @@ pub fn gen_byte_blocks_from<const BLOCK_SIZE: usize>(cont: &[u64]) -> Vec<[u8; B
         let mut arr = [0x0; BLOCK_SIZE];
 
         debug!("PRE: arr: {}", to_hex(&arr));
-        (&mut arr[0..std::mem::size_of::<u64>()]).copy_from_slice(&bs);
+        arr[0..std::mem::size_of::<u64>()].copy_from_slice(&bs);
         debug!("POST: arr: {}", to_hex(&arr));
         result.push(arr);
     }

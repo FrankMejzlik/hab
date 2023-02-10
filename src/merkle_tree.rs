@@ -47,9 +47,9 @@ impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
         let mut t = MerkleTree { data, t, h, size };
 
         for l in (0_u32..(h - 1) as u32).rev() {
-            let num_idxs = 2_usize.pow(l as u32);
-            let base_prev = 2_usize.pow((l + 1) as u32) - 1;
-            let base = 2_usize.pow(l as u32) - 1;
+            let num_idxs = 2_usize.pow(l);
+            let base_prev = 2_usize.pow(l + 1) - 1;
+            let base = 2_usize.pow(l) - 1;
             for i in 0_usize..num_idxs {
                 let mut hasher = Hash::new();
                 hasher.update(t.data[base_prev + 2 * i]);
@@ -109,7 +109,7 @@ size: {}
         )?;
 
         for l in 0_u32..self.h as u32 {
-            let num_idxs = 2_usize.pow(l as u32);
+            let num_idxs = 2_usize.pow(l);
             for i in 0_usize..num_idxs {
                 for (i, b) in self.get(l, i).iter().enumerate() {
                     if i >= 2 {

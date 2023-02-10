@@ -25,8 +25,11 @@ use crate::utils::UnixTimestamp;
 #[derive(Clone)]
 struct KeyCont<const T: usize, const N: usize> {
     key: HorstKeypair<T, N>,
+    #[allow(dead_code)]
     last_cerified: UnixTimestamp,
+    #[allow(dead_code)]
     signs: usize,
+    #[allow(dead_code)]
     lifetime: usize,
 }
 
@@ -96,6 +99,7 @@ pub struct BlockSigner<
     MsgHashFn: Digest,
     TreeHashFn: Digest,
 > {
+    #[allow(dead_code)]
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
     // ---
@@ -183,10 +187,11 @@ impl<
         let signature = Self::Signer::sign(data, sk);
 
         // --- sanity check ---
-        assert_eq!(
-            Self::Signer::verify(data, &signature, &self.layers.data[0][0].key.public),
-            true
-        );
+        assert!(Self::Signer::verify(
+            data,
+            &signature,
+            &self.layers.data[0][0].key.public
+        ));
         info!("Signature check OK.");
         // --- sanity check ---
 

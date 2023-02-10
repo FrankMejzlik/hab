@@ -14,9 +14,11 @@ pub struct NetReceiverParams {}
 /// # See
 /// * `struct NetSender`
 ///
+#[allow(dead_code)]
 pub struct NetReceiver {}
 
 impl NetReceiver {
+    #[allow(dead_code)]
     pub fn new(_params: NetReceiverParams) -> Self {
         NetReceiver {}
     }

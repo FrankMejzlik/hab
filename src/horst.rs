@@ -88,8 +88,8 @@ impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SI
 impl<const T: usize, const N: usize> Display for HorstSecretKey<T, N> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         writeln!(f, "<<< HorstSecretKey >>>")?;
-        writeln!(f, "\t[{:0>5}]: {}", 0, encode(&self.data[0]))?;
-        writeln!(f, "\t[{:0>5}]: {}", 1, encode(&self.data[1]))?;
+        writeln!(f, "\t[{:0>5}]: {}", 0, encode(self.data[0]))?;
+        writeln!(f, "\t[{:0>5}]: {}", 1, encode(self.data[1]))?;
         writeln!(f, "\t...")?;
         writeln!(f, "\t[{:0>5}]: {}", T - 2, utils::to_hex(&self.data[T - 2]))?;
         writeln!(f, "\t[{:0>5}]: {}", T - 1, utils::to_hex(&self.data[T - 1]))?;
@@ -249,12 +249,12 @@ impl<
             return false;
         }
 
-        if !(TAU <= 64) {
+        if TAU > 64 {
             error!("The TAU parameter must be at most 64. Because we want to use at most 64-bit indices to the segments.");
             return false;
         }
 
-        if !((MSG_HASH_SIZE * 8) % TAU == 0) {
+        if (MSG_HASH_SIZE * 8) % TAU != 0 {
             error!("The bit output size of the message hash function must be multiple of TAU because we will divide it into segments of TAU-bit length.");
             return false;
         };
@@ -281,7 +281,7 @@ impl<
             assert_eq!(auth.len(), TAU, "Wrong size of auth path!");
 
             element[0] = sk_c_i;
-            (&mut element[1..]).copy_from_slice(&auth[..TAU]);
+            element[1..].copy_from_slice(&auth[..TAU]);
 
             signature[i] = element;
         }
@@ -404,7 +404,7 @@ mod tests {
 
         assert!(Signer::check_params(), "Invalid `Signer` parameters!");
 
-        let mut rng = CsPrng::seed_from_u64(42);
+        let mut rng = CsPrng::seed_from_u64(SEED);
         //
         // Alice signs
         //
