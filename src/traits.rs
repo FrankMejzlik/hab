@@ -8,7 +8,25 @@ use std::io::{Read, Write};
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use sha3::Digest;
 
-pub trait Error {}
+///
+/// Provides a high-level interface for broadcasting the signed data to the subscribed receivers.
+///
+/// # See
+/// * `trait ReceiverTrait`
+///
+pub trait SenderTrait {
+    fn run(&mut self, input: &dyn Read);
+}
+
+///
+/// Provides a high-level interface for receiving the signed data from the desired source sender.
+///
+/// # See
+/// * `trait SenderTrait`
+///
+pub trait ReceiverTrait {
+    fn run(&mut self, output: &dyn Write);
+}
 
 #[derive(Clone)]
 pub struct KeyPair<GSecretKey, GPublicKey> {
@@ -30,8 +48,11 @@ impl<GSecretKey, GPublicKey> KeyPair<GSecretKey, GPublicKey> {
 ///
 /// Such interface needs some signature scheme to work. Such scheme can be for example `SignatureSchemeTrait`.
 ///
+/// The counterpart inteface to this is a receiver one - `BlockVerifierTrait`.
+/// 
 /// # See also
 /// `SignatureSchemeTrait`
+/// `BlockVerifierTrait`
 ///
 pub trait BlockSignerTrait {
     type Error: ErrorTrait;
@@ -44,6 +65,29 @@ pub trait BlockSignerTrait {
 
     fn new(params: Self::BlockSignerParams) -> Self;
     fn sign(&mut self, data: &[u8]) -> Result<Self::SignedBlock, Self::Error>;
+}
+
+///
+/// A high-level interface for verifying the signature on the provided block of data.
+///
+/// Such interface needs some signature scheme to work. Such scheme can be for example `SignatureSchemeTrait`.
+/// The counterpart inteface to this is a sender one - `BlockSignerTrait`.
+///
+/// # See also
+/// `SignatureSchemeTrait`
+/// `BlockSignerTrait`
+///
+pub trait BlockVerifierTrait {
+    type Error: ErrorTrait;
+    type Signer: SignatureSchemeTrait;
+    type BlockVerifyierParams;
+    type SecretKey;
+    type PublicKey;
+    type Signature;
+    type SignedBlock;
+
+    fn new(params: Self::BlockVerifyierParams) -> Self;
+    fn verify(&mut self, data: Self::SignedBlock) -> Result<Vec<u8>, Self::Error>;
 }
 
 ///
@@ -81,7 +125,7 @@ pub trait SignatureSchemeTrait {
 /// Provides an interface for broadcasting the data blocks to the subscribed
 /// receivers over the computer network.
 ///
-pub trait NetworkSender {
+pub trait NetworkSenderTrait {
     type Error: ErrorTrait;
 
     ///
@@ -90,24 +134,13 @@ pub trait NetworkSender {
     fn broadcast(&self, data: &[u8]) -> Result<(), Self::Error>;
 }
 
-///
-/// Provides a high-level interface for broadcasting the signed data to the subscribed receivers.
-///
-/// # See
-/// * `trait ReceiverTrait`
-///
-pub trait SenderTrait {
-    fn run(&mut self, input: &dyn Read);
-}
+pub trait NetworkReceiverTrait {
+    type Error: ErrorTrait;
 
-///
-/// Provides a high-level interface for receiving the signed data from the desired source sender.
-///
-/// # See
-/// * `trait SenderTrait`
-///
-pub trait ReceiverTrait {
-    fn run(&mut self, output: &dyn Write);
+    ///
+    /// Sends the provided data to the currently subscribed receivers.
+    ///
+    fn broadcast(&self, data: &[u8]) -> Result<(), Self::Error>;
 }
 
 ///
