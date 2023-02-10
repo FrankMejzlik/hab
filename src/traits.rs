@@ -22,6 +22,17 @@ impl<GSecretKey, GPublicKey> KeyPair<GSecretKey, GPublicKey> {
     }
 }
 
+///
+/// A high-level interface for signing the block of data and receiving the block of data
+/// that is safe to be transfered via insecure channel (e.g. Internet).  
+/// The authenticity and integrity of the data can be verified using the matching public
+/// key (e.g. using a struct implementing `BlockVerifierTrait`).
+///
+/// Such interface needs some signature scheme to work. Such scheme can be for example `SignatureSchemeTrait`.
+///
+/// # See also
+/// `SignatureSchemeTrait`
+///
 pub trait BlockSignerTrait {
     type Error: ErrorTrait;
     type Signer: SignatureSchemeTrait;
@@ -35,6 +46,16 @@ pub trait BlockSignerTrait {
     fn sign(&mut self, data: &[u8]) -> Result<Self::SignedBlock, Self::Error>;
 }
 
+///
+/// An interface for a hash-based signature scheme that can generate key pairs, sign a block of data
+/// and also verify the signature of the provided data.
+///
+/// This can be used by higher-level interfaces that add some additional functionality above it (e.g. hierarchy
+/// of key pairs). One such trait is `BlockSignerTrait`.
+///
+/// # See also
+/// `BlockSignerTrait`
+///
 pub trait SignatureSchemeTrait {
     type CsPrng: CryptoRng + SeedableRng + RngCore;
     type MsgHashFn: Digest;
@@ -46,7 +67,11 @@ pub trait SignatureSchemeTrait {
     type MsgHashBlock;
     type TreeHashBlock;
 
-    fn new() -> Self;
+    ///
+    /// Checks the configured parameters. It is recommended to do the chceck during the initialization.
+    ///
+    /// For example that the size of the hash function output matches the declared hash size.
+    fn check_params() -> bool;
     fn verify(msg: &[u8], signature: &Self::Signature, pub_key: &Self::PublicKey) -> bool;
     fn sign(msg: &[u8], secret_key: &Self::SecretKey) -> Self::Signature;
     fn gen_key_pair(rng: &mut Self::CsPrng) -> KeyPair<Self::SecretKey, Self::PublicKey>;

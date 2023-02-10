@@ -240,31 +240,28 @@ impl<
     type MsgHashBlock = [u8; MSG_HASH_SIZE];
     type TreeHashBlock = [u8; TREE_HASH_SIZE];
 
-    fn new() -> Self {
-        // TODO: Check the matching sizes of hashes and parameters
-        assert_eq!(
-            MSG_HASH_SIZE,
-            <MsgHashFn as Digest>::output_size(),
-            "The parameters do not match the size of a message hash function output!"
-        );
-        assert_eq!(
-            TREE_HASH_SIZE,
-            <TreeHash as Digest>::output_size(),
-            "The parameter do not match the size of the a tree hash function output!"
-        );
-
-        assert!(TAU < 64, "TAU must be less than 64 bits.");
-
-        assert!(
-            (MSG_HASH_SIZE * 8) % TAU == 0,
-            "The output size of a message hash function must be multiple of TAU"
-        );
-
-        HorstSigScheme {
-            phantom0: PhantomData,
-            phantom1: PhantomData,
-            phantom2: PhantomData,
+    fn check_params() -> bool {
+        if MSG_HASH_SIZE != <MsgHashFn as Digest>::output_size() {
+            error!("The parameters do not match the size of a message hash function output!");
+            return false;
         }
+
+        if TREE_HASH_SIZE != <TreeHash as Digest>::output_size() {
+            error!("The parameter do not match the size of the a tree hash function output!");
+            return false;
+        }
+
+        if !(TAU <= 64) {
+            error!("The TAU parameter must be at most 64. Because we want to use at most 64-bit indices to the segments.");
+            return false;
+        }
+
+        if !((MSG_HASH_SIZE * 8) % TAU == 0) {
+            error!("The bit output size of the message hash function must be multiple of TAU because we will divide it into segments of TAU-bit length.");
+            return false;
+        };
+
+        true
     }
 
     fn sign(msg: &[u8], secret_key: &Self::SecretKey) -> Self::Signature {
