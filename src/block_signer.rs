@@ -99,9 +99,8 @@ pub struct BlockSigner<
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
     // ---
-    // To determine the type variance: https://stackoverflow.com/a/71276732
-    phantom0: PhantomData<MsgHashFn>,
-    phantom1: PhantomData<TreeHashFn>,
+    // To determine the type variance: https://stackoverflow.com/a/65960918
+    _p: PhantomData<(MsgHashFn, TreeHashFn)>,
 }
 
 impl<
@@ -113,8 +112,9 @@ impl<
         const TREE_HASH_SIZE: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore,
         MsgHashFn: Digest,
-        TreeHash: Digest,
-    > BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHash>
+        TreeHashFn: Digest,
+    >
+    BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
     fn next_key(
         &mut self,
@@ -173,8 +173,7 @@ impl<
         BlockSigner {
             rng,
             layers,
-            phantom0: PhantomData,
-            phantom1: PhantomData,
+            _p: PhantomData,
         }
     }
 

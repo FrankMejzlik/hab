@@ -184,12 +184,10 @@ pub struct HorstSigScheme<
     const TREE_HASH_SIZE: usize,
     CsPrng: CryptoRng + SeedableRng + RngCore,
     MsgHashFn: Digest,
-    TreeHash: Digest,
+    TreeHashFn: Digest,
 > {
     // To determine the type variance: https://stackoverflow.com/a/71276732
-    phantom0: PhantomData<CsPrng>,
-    phantom1: PhantomData<MsgHashFn>,
-    phantom2: PhantomData<TreeHash>,
+    _p: PhantomData<(CsPrng, MsgHashFn, TreeHashFn)>,
 }
 
 impl<
@@ -201,9 +199,9 @@ impl<
         const TREE_HASH_SIZE: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore,
         MsgHashFn: Digest,
-        TreeHash: Digest,
+        TreeHashFn: Digest,
     >
-    HorstSigScheme<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHash>
+    HorstSigScheme<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
 }
 
@@ -216,7 +214,7 @@ impl<
         const TREE_HASH_SIZE: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore,
         MsgHashFn: Digest,
-        TreeHash: Digest,
+        TreeHashFn: Digest,
     > SignatureSchemeTrait
     for HorstSigScheme<
         K,
@@ -227,12 +225,12 @@ impl<
         TREE_HASH_SIZE,
         CsPrng,
         MsgHashFn,
-        TreeHash,
+        TreeHashFn,
     >
 {
     type CsPrng = CsPrng;
     type MsgHashFn = MsgHashFn;
-    type TreeHash = TreeHash;
+    type TreeHashFn = TreeHashFn;
     type SecretKey = HorstSecretKey<T, TREE_HASH_SIZE>;
     type PublicKey = HorstPublicKey<TREE_HASH_SIZE>;
     type Signature = HorstSignature<TREE_HASH_SIZE, K, TAUPLUS>;
@@ -246,7 +244,7 @@ impl<
             return false;
         }
 
-        if TREE_HASH_SIZE != <TreeHash as Digest>::output_size() {
+        if TREE_HASH_SIZE != <TreeHashFn as Digest>::output_size() {
             error!("The parameter do not match the size of the a tree hash function output!");
             return false;
         }
@@ -309,17 +307,17 @@ impl<
             let mut idx = indices[i];
 
             // TODO: How to initialize
-            let mut parent_hash = Self::TreeHash::digest(b"");
+            let mut parent_hash = Self::TreeHashFn::digest(b"");
             for (j, s) in segment.into_iter().enumerate() {
                 // SK
                 if j == 0 {
                     // Hash the secret segment
-                    parent_hash = Self::TreeHash::digest(s);
+                    parent_hash = Self::TreeHashFn::digest(s);
                 }
                 // Auth path
                 else {
                     let auth_is_left = (idx % 2) == 1;
-                    let mut hasher = Self::TreeHash::new();
+                    let mut hasher = Self::TreeHashFn::new();
 
                     if auth_is_left {
                         hasher.update(s);
@@ -346,7 +344,7 @@ impl<
     // ---
 
     fn gen_key_pair(rng: &mut Self::CsPrng) -> KeyPair<Self::SecretKey, Self::PublicKey> {
-        let sk = Self::SecretKey::new::<Self::TreeHash, Self::CsPrng>(rng);
+        let sk = Self::SecretKey::new::<Self::TreeHashFn, Self::CsPrng>(rng);
         let pk = Self::PublicKey::new(sk.tree.root());
 
         KeyPair::new(sk, pk)
@@ -404,20 +402,20 @@ mod tests {
     fn test_horst_sign_verify() {
         let msg = b"Hello, world!";
 
-        let mut alice_signer = Signer::new();
-        let mut eve_signer = Signer::new();
+        assert!(Signer::check_params(), "Invalid `Signer` parameters!");
 
+        let mut rng = CsPrng::seed_from_u64(42);
         //
         // Alice signs
         //
-        let alice_key_pair = alice_signer.gen_key_pair();
-        let alice_sign = alice_signer.sign(msg);
+        let alice_key_pair = Signer::gen_key_pair(&mut rng);
+        let alice_sign = Signer::sign(msg, &alice_key_pair.secret);
 
         //
         // Eve attacker signs
         //
-        let _eve_key_pair = eve_signer.gen_key_pair();
-        let eve_sign = eve_signer.sign(msg);
+        let eve_key_pair = Signer::gen_key_pair(&mut rng);
+        let eve_sign = Signer::sign(msg, &eve_key_pair.secret);
 
         //
         // Bob verifies

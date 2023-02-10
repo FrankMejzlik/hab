@@ -59,7 +59,7 @@ pub trait BlockSignerTrait {
 pub trait SignatureSchemeTrait {
     type CsPrng: CryptoRng + SeedableRng + RngCore;
     type MsgHashFn: Digest;
-    type TreeHash: Digest;
+    type TreeHashFn: Digest;
     type SecretKey;
     type PublicKey;
     type Signature;
