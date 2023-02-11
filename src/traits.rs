@@ -28,18 +28,6 @@ pub trait ReceiverTrait {
     fn run(&mut self, output: &dyn Write);
 }
 
-#[derive(Clone)]
-pub struct KeyPair<GSecretKey, GPublicKey> {
-    pub secret: GSecretKey,
-    pub public: GPublicKey,
-}
-
-impl<GSecretKey, GPublicKey> KeyPair<GSecretKey, GPublicKey> {
-    pub fn new(secret: GSecretKey, public: GPublicKey) -> Self {
-        KeyPair { secret, public }
-    }
-}
-
 ///
 /// A high-level interface for signing the block of data and receiving the block of data
 /// that is safe to be transfered via insecure channel (e.g. Internet).  
@@ -49,7 +37,7 @@ impl<GSecretKey, GPublicKey> KeyPair<GSecretKey, GPublicKey> {
 /// Such interface needs some signature scheme to work. Such scheme can be for example `SignatureSchemeTrait`.
 ///
 /// The counterpart inteface to this is a receiver one - `BlockVerifierTrait`.
-/// 
+///
 /// # See also
 /// `SignatureSchemeTrait`
 /// `BlockVerifierTrait`
@@ -151,4 +139,16 @@ pub trait DiagServerTrait {
 
     /// Sends the JSON representation of the current state of the application.
     fn send_state(&mut self, data: &str) -> Result<(), Self::Error>;
+}
+
+#[derive(Clone)]
+pub struct KeyPair<GSecretKey, GPublicKey> {
+    pub secret: GSecretKey,
+    pub public: GPublicKey,
+}
+
+impl<GSecretKey, GPublicKey> KeyPair<GSecretKey, GPublicKey> {
+    pub fn new(secret: GSecretKey, public: GPublicKey) -> Self {
+        KeyPair { secret, public }
+    }
 }
