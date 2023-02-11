@@ -11,6 +11,8 @@ use clap::Parser;
 // The general error type we're using throught this program.
 // ***
 
+pub type UnixTimestamp = u128;
+
 /// General error type used in this binary.
 #[derive(Debug)]
 pub struct Error {
@@ -60,6 +62,9 @@ pub struct Args {
     /// Seed used for the CSPRNG.
     #[clap(short, long, default_value_t = 42)]
     pub seed: u64,
+    /// A port number to listen at.
+    #[clap(short, long, default_value_t = 5555)]
+    pub port: u32,
     /// The input file (if none, STDIN), only aplicable with `Sender`.
     #[clap(short, long)]
     pub input: Option<String>,

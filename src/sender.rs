@@ -3,8 +3,12 @@
 //!
 
 use std::io::Read;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 use std::{mem::size_of_val, thread};
 // ---
+use chrono::Local;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 // ---
@@ -15,6 +19,7 @@ use crate::traits::{BlockSignerTrait, SenderTrait};
 
 pub struct SenderParams {
     pub seed: u64,
+    pub port: u32,
 }
 
 pub struct Sender {
@@ -29,7 +34,7 @@ impl Sender {
         let block_signer_params = BlockSignerParams { seed: params.seed };
         let signer = BlockSignerInst::new(block_signer_params);
 
-        let net_sender_params = NetSenderParams {};
+        let net_sender_params = NetSenderParams { port: params.port };
         let net_sender = NetSender::new(net_sender_params);
 
         Sender {
@@ -41,24 +46,28 @@ impl Sender {
 }
 
 impl SenderTrait for Sender {
-    fn run(&mut self, _input: &dyn Read) {
-        let msg = b"Hello, world!";
+    fn run(&mut self, _input: &dyn Read, running: Arc<AtomicBool>) {
+        // The main loop as long as the app should run
+        while running.load(Ordering::Acquire) {
+            let msg = Local::now()
+                .format("%d-%m-%Y %H:%M:%S")
+                .to_string()
+                .into_bytes();
+            debug!("Processing message '{}'...", String::from_utf8_lossy(&msg));
 
-        let packet = match self.signer.sign(msg) {
-            Ok(x) => x,
-            Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
-        };
+            let signed_data = match self.signer.sign(&msg) {
+                Ok(x) => x.to_bytes(),
+                Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
+            };
 
-        debug!("packet: {} B", size_of_val(&packet));
+            debug!("Signed data block size: {}B", size_of_val(&signed_data));
 
-        let packet_bytes = packet.to_bytes();
-        match self.net_sender.broadcast(&packet_bytes) {
-            Ok(()) => debug!("Packet broadcasted."),
-            Err(e) => panic!("Failed to broadcast the data block!\nERROR: {:?}", e),
-        };
+            match self.net_sender.broadcast(&signed_data) {
+                Ok(()) => debug!("Signed data block broadcasted."),
+                Err(e) => panic!("Failed to broadcast the data block!\nERROR: {:?}", e),
+            };
 
-        loop {
-            thread::sleep(std::time::Duration::from_secs(1));
+            thread::sleep(Duration::from_secs(3));
         }
     }
 }

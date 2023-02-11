@@ -15,9 +15,14 @@ mod traits;
 mod utils;
 
 use std::fs::File;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::thread;
 // ---
 use clap::Parser;
+use ctrlc;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 // ---
@@ -27,12 +32,12 @@ use diag_server::DiagServer;
 use sender::{Sender, SenderParams};
 
 #[allow(dead_code)]
-fn run_diag_server(_args: Args) {
+fn run_diag_server(_args: Args, running: Arc<AtomicBool>) {
     info!("Running a diag server...");
 
     let mut diag_server = DiagServer::new("127.0.0.1:9000".parse().unwrap());
 
-    loop {
+    while running.load(Ordering::Acquire) {
         let msg = format!("{}", utils::unix_ts());
         diag_server
             .send_state(&msg)
@@ -41,10 +46,13 @@ fn run_diag_server(_args: Args) {
     }
 }
 
-fn run_sender(args: Args) {
+fn run_sender(args: Args, running: Arc<AtomicBool>) {
     info!("Running a sender...");
 
-    let sender_params = SenderParams { seed: args.seed };
+    let sender_params = SenderParams {
+        seed: args.seed,
+        port: args.port,
+    };
     let mut sender = Sender::new(sender_params);
 
     // Use the desired input (STDIN or the provided file)
@@ -57,16 +65,16 @@ fn run_sender(args: Args) {
                     panic!("Failed to open file: {:?}", e);
                 }
             };
-            sender.run(&file)
+            sender.run(&file, running)
         }
         None => {
             info!("Getting input from STDIN...");
-            sender.run(&std::io::stdin())
+            sender.run(&std::io::stdin(), running)
         }
     }
 }
 
-fn run_receiver(_args: Args) {
+fn run_receiver(_args: Args, _running: Arc<AtomicBool>) {
     info!("Running a receiver...");
     // TODO
 }
@@ -75,12 +83,20 @@ fn main() {
     if let Err(e) = common::setup_logger() {
         warn!("Unable to initialize the logger!\nERROR: {}", e);
     }
+    // Flag that indicates if the app shoul still run
+    let running = Arc::new(AtomicBool::new(true));
+    let running_clone = running.clone();
+
+    ctrlc::set_handler(move || {
+        running_clone.store(false, Ordering::Release);
+    })
+    .expect("Error setting Ctrl-C handler");
 
     let args = Args::parse();
 
     // Sender mode
     match args.mode {
-        ProgramMode::Sender => run_sender(args),
-        ProgramMode::Receiver => run_receiver(args),
+        ProgramMode::Sender => run_sender(args, running),
+        ProgramMode::Receiver => run_receiver(args, running),
     }
 }
