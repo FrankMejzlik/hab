@@ -50,6 +50,7 @@ fn run_sender(args: Args, running: Arc<AtomicBool>) {
     let sender_params = SenderParams {
         seed: args.seed,
         port: args.port,
+        running,
     };
     let mut sender = Sender::new(sender_params);
 
@@ -63,11 +64,11 @@ fn run_sender(args: Args, running: Arc<AtomicBool>) {
                     panic!("Failed to open file: {:?}", e);
                 }
             };
-            sender.run(&file, running)
+            sender.run(&file)
         }
         None => {
             info!("Getting input from STDIN...");
-            sender.run(&std::io::stdin(), running)
+            sender.run(&std::io::stdin())
         }
     }
 }

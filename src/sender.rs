@@ -20,6 +20,7 @@ use chrono::Local;
 pub struct SenderParams {
     pub seed: u64,
     pub port: u32,
+    pub running: Arc<AtomicBool>,
 }
 
 pub struct Sender {
@@ -34,7 +35,10 @@ impl Sender {
         let block_signer_params = BlockSignerParams { seed: params.seed };
         let signer = BlockSignerInst::new(block_signer_params);
 
-        let net_sender_params = NetSenderParams { port: params.port };
+        let net_sender_params = NetSenderParams {
+            port: params.port,
+            running: params.running.clone(),
+        };
         let net_sender = NetSender::new(net_sender_params);
 
         Sender {
@@ -46,9 +50,9 @@ impl Sender {
 }
 
 impl SenderTrait for Sender {
-    fn run(&mut self, _input: &dyn Read, running: Arc<AtomicBool>) {
+    fn run(&mut self, _input: &dyn Read) {
         // The main loop as long as the app should run
-        while running.load(Ordering::Acquire) {
+        while self.params.running.load(Ordering::Acquire) {
             let msg = Local::now()
                 .format("%d-%m-%Y %H:%M:%S")
                 .to_string()

@@ -3,6 +3,7 @@
 //!
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 // ---
 use std::net::{Ipv4Addr, SocketAddrV4};
@@ -19,6 +20,7 @@ pub enum NetSenderError {}
 #[derive(Debug)]
 pub struct NetSenderParams {
     pub port: u32,
+    pub running: Arc<AtomicBool>,
 }
 
 ///
@@ -38,7 +40,7 @@ impl NetSender {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
         // Spawn the task that will accept the receiver heartbeats
-        rt.spawn(Self::registrator_task(params.port));
+        rt.spawn(Self::registrator_task(params.port, params.running));
 
         NetSender {
             subscribers: Arc::new(Mutex::new(BTreeMap::new())),
@@ -51,7 +53,7 @@ impl NetSender {
         Ok(())
     }
 
-    async fn registrator_task(port: u32) {
+    async fn registrator_task(port: u32, running: Arc<AtomicBool>) {
         let addr = SocketAddrV4::new(
             Ipv4Addr::new(0, 0, 0, 0),
             port.try_into().expect("Failed to convert to u16!"),
@@ -62,7 +64,7 @@ impl NetSender {
         };
         info!(tag: "registrator", "Accepting heartbeats from receivers...");
 
-        loop {
+        while running.load(Ordering::Acquire) {
             let mut buf = [0; 1024];
             let (recv, peer) = match socket.recv_from(&mut buf).await {
                 Ok(x) => x,
