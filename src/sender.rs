@@ -8,14 +8,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{mem::size_of_val, thread};
 // ---
-use chrono::Local;
-#[allow(unused_imports)]
-use log::{debug, error, info, trace, warn};
-// ---
 use crate::block_signer::BlockSignerParams;
 use crate::config::BlockSignerInst;
 use crate::net_sender::{NetSender, NetSenderParams};
 use crate::traits::{BlockSignerTrait, SenderTrait};
+#[allow(unused_imports)]
+// ---
+use crate::{debug, error, info, trace, warn};
+use chrono::Local;
 
 pub struct SenderParams {
     pub seed: u64,
@@ -53,17 +53,17 @@ impl SenderTrait for Sender {
                 .format("%d-%m-%Y %H:%M:%S")
                 .to_string()
                 .into_bytes();
-            debug!("Processing message '{}'...", String::from_utf8_lossy(&msg));
+            debug!(tag: "sender", "Processing message '{}'...", String::from_utf8_lossy(&msg));
 
             let signed_data = match self.signer.sign(&msg) {
                 Ok(x) => x.to_bytes(),
                 Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
             };
 
-            debug!("Signed data block size: {}B", size_of_val(&signed_data));
+            debug!(tag: "sender", "Signed data block size: {}B", size_of_val(&signed_data));
 
             match self.net_sender.broadcast(&signed_data) {
-                Ok(()) => debug!("Signed data block broadcasted."),
+                Ok(()) => debug!(tag: "sender", "Signed data block broadcasted."),
                 Err(e) => panic!("Failed to broadcast the data block!\nERROR: {:?}", e),
             };
 

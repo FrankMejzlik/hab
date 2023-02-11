@@ -4,8 +4,10 @@
 
 use std::error::Error as StdError;
 use std::fmt;
+
 // ---
 use clap::Parser;
+// ---
 
 // ***
 // The general error type we're using throught this program.
@@ -80,9 +82,9 @@ pub fn setup_logger() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
-                "{}[{}] {}",
+                "[{}][{}]{}",
                 //chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                chrono::Local::now().format("[%H:%M:%S]"),
+                chrono::Local::now().format("%H:%M:%S"),
                 record.level(),
                 message
             ))
@@ -95,4 +97,197 @@ pub fn setup_logger() -> Result<(), fern::InitError> {
         .chain(fern::log_file("output.log")?)
         .apply()?;
     Ok(())
+}
+
+///
+/// Wrapper around the standard logging macros to accept also tag and log the messages
+/// also to separate files per tag.
+///
+
+#[macro_export]
+macro_rules! trace {
+	(tag: $tag:expr, $($arg:tt)+) => {{
+        use crate::config::LOGS_DIR;
+        use std::io::Write;
+
+        if log::max_level() >= log::Level::Trace {
+            let mut log_file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(format!("{}/{}.log", LOGS_DIR, $tag))
+                .unwrap();
+
+			let inner = format!($($arg)+);
+
+            log_file
+                .write_all(
+                    format!(
+                        "[{}][{}][{}] {}\n",
+                        chrono::Local::now().format("%H:%M:%S"),
+                        "TRACE",
+                        $tag,
+                        inner
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+
+            log::trace!($($arg)+);
+        }
+    }};
+
+	($($arg:tt)+) => {{
+            log::trace!($($arg)+);
+    }};
+}
+
+#[macro_export]
+macro_rules! debug {
+	(tag: $tag:expr, $($arg:tt)+) => {{
+        use crate::config::LOGS_DIR;
+        use std::io::Write;
+
+        if log::max_level() >= log::Level::Debug {
+            let mut log_file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(format!("{}/{}.log", LOGS_DIR, $tag))
+                .unwrap();
+
+			let inner = format!($($arg)+);
+
+            log_file
+                .write_all(
+                    format!(
+                        "[{}][{}][{}] {}\n",
+                        chrono::Local::now().format("%H:%M:%S"),
+                        "DEBUG",
+                        $tag,
+                        inner
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+
+            log::debug!($($arg)+);
+        }
+    }};
+
+	($($arg:tt)+) => {{
+            log::debug!($($arg)+);
+    }};
+}
+
+#[macro_export]
+macro_rules! info {
+	(tag: $tag:expr, $($arg:tt)+) => {{
+        use crate::config::LOGS_DIR;
+        use std::io::Write;
+
+        if log::max_level() >= log::Level::Info {
+            let mut log_file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(format!("{}/{}.log", LOGS_DIR, $tag))
+                .unwrap();
+
+			let inner = format!($($arg)+);
+
+            log_file
+                .write_all(
+                    format!(
+                        "[{}][{}][{}] {}\n",
+                        chrono::Local::now().format("%H:%M:%S"),
+                        "INFO",
+                        $tag,
+                        inner
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+
+            log::info!($($arg)+);
+        }
+    }};
+
+	($($arg:tt)+) => {{
+            log::info!($($arg)+);
+    }};
+
+}
+
+#[macro_export]
+macro_rules! warn {
+	(tag: $tag:expr, $($arg:tt)+) => {{
+        use crate::config::LOGS_DIR;
+        use std::io::Write;
+
+        if log::max_level() >= log::Level::Info {
+            let mut log_file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(format!("{}/{}.log", LOGS_DIR, $tag))
+                .unwrap();
+
+			let inner = format!($($arg)+);
+
+            log_file
+                .write_all(
+                    format!(
+                        "[{}][{}][{}] {}\n",
+                        chrono::Local::now().format("%H:%M:%S"),
+                        "WARN",
+                        $tag,
+                        inner
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+
+            log::warn!($($arg)+);
+        }
+    }};
+
+	($($arg:tt)+) => {{
+            log::warn!($($arg)+);
+    }};
+
+}
+
+#[macro_export]
+macro_rules! error {
+	(tag: $tag:expr, $($arg:tt)+) => {{
+        use crate::config::LOGS_DIR;
+        use std::io::Write;
+
+        if log::max_level() >= log::Level::Info {
+            let mut log_file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(format!("{}/{}.log", LOGS_DIR, $tag))
+                .unwrap();
+
+			let inner = format!($($arg)+);
+
+            log_file
+                .write_all(
+                    format!(
+                        "[{}][{}][{}] {}\n",
+                        chrono::Local::now().format("%H:%M:%S"),
+                        "ERROR",
+                        $tag,
+                        inner
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+
+            log::error!($($arg)+);
+        }
+    }};
+
+	($($arg:tt)+) => {{
+            log::error!($($arg)+);
+    }};
+
 }

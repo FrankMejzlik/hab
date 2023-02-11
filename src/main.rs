@@ -23,8 +23,6 @@ use std::thread;
 // ---
 use clap::Parser;
 use ctrlc;
-#[allow(unused_imports)]
-use log::{debug, error, info, trace, warn};
 // ---
 use crate::traits::{DiagServerTrait, SenderTrait};
 use common::{Args, ProgramMode};
@@ -81,7 +79,7 @@ fn run_receiver(_args: Args, _running: Arc<AtomicBool>) {
 
 fn main() {
     if let Err(e) = common::setup_logger() {
-        warn!("Unable to initialize the logger!\nERROR: {}", e);
+        info!("Unable to initialize the logger!\nERROR: {}", e);
     }
     // Flag that indicates if the app shoul still run
     let running = Arc::new(AtomicBool::new(true));
