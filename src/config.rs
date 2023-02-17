@@ -10,6 +10,7 @@ use sha3::{Sha3_256, Sha3_512};
 use crate::block_signer::BlockSigner;
 
 pub const LOGS_DIR: &str = "logs";
+pub const HB_MSG: &[u8; 4] = &[0xde, 0xad, 0xbe, 0xef];
 
 // ***************************************
 //             PARAMETERS

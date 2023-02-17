@@ -15,6 +15,7 @@ use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 // ---
+use crate::config;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
@@ -59,11 +60,22 @@ impl NetReceiver {
             Ok(x) => x,
             Err(e) => panic!("Failed to parse the address '{addr}! ERROR: {e}'"),
         };
+        let socket = match UdpSocket::bind("0.0.0.0:0").await {
+            Ok(x) => x,
+            Err(e) => panic!("Failed to bind to the heartbeat socket! ERROR: {}", e),
+        };
+        if let Err(e) = socket.connect(addr).await {
+            panic!("Failed to connect to '{addr}'!");
+        }
         info!(tag: "heartbeat_task", "Subscribing to the sender at '{addr}'....");
 
         // The task loop
         while running.load(Ordering::Acquire) {
             debug!(tag: "heartbeat_task", "Sending a heartbeat to the sender at '{addr}'...");
+            match socket.send(config::HB_MSG).await {
+                Ok(_) => (),
+                Err(e) => warn!("Failed to send a heartbeat to '{addr}'! ERROR: {e}"),
+            };
             sleep(Duration::from_secs(5)).await;
         }
     }
