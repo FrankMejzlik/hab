@@ -30,6 +30,8 @@ tail -f ./env/sender/logs/output.log
 tail -f ./env/sender/logs/sender.log
 # The task managing the requests from receivers
 tail -f ./env/sender/logs/registrator_task.log
+# The list of active subscribers
+tail -f ./env/sender/logs/subscribers.log
 ```
 
 ### Receiver

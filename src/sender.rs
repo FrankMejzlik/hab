@@ -52,7 +52,7 @@ impl Sender {
     // ---
 
     /// Reads the available chunk of data from the provided input.
-    fn read_input(_input: &mut dyn Read) -> (Vec<u8>, u64) {
+    fn read_input(_input: &mut dyn Read) -> Vec<u8> {
         let mut msg = String::default();
 
         #[cfg(feature = "simulate_stdin")]
@@ -67,11 +67,7 @@ impl Sender {
 
         debug!(tag: "sender", "Processing input '{}'...", &msg);
 
-        let bytes = msg.into_bytes();
-        let hash = xxh3_64(&bytes);
-
-        log_input!(hash, &bytes);
-        (bytes, hash)
+        msg.into_bytes()
     }
 }
 
@@ -79,12 +75,16 @@ impl SenderTrait for Sender {
     fn run(&mut self, input: &mut dyn Read) {
         // The main loop as long as the app should run
         while self.params.running.load(Ordering::Acquire) {
-            let (data, hash) = Self::read_input(input);
+            let data = Self::read_input(input);
 
             let signed_data = match self.signer.sign(&data) {
                 Ok(x) => x.to_bytes(),
                 Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
             };
+
+            // Debug log the input signed block
+            let hash = xxh3_64(&signed_data);
+            log_input!(hash, &signed_data);
 
             if let Err(e) = self.net_sender.broadcast(&signed_data) {
                 panic!("Failed to broadcast the data block!\nERROR: {:?}", e);

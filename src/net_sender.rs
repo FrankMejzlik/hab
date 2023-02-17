@@ -121,6 +121,7 @@ impl NetSender {
             // Insert/update this subscriber
             let mut subs_guard = subs.lock().expect("Should be lockable!");
             subs_guard.insert(recv_socket, utils::unix_ts() + config::SUBSCRIBER_LIFETIME);
+            debug!(tag: "subscribers", "SUBSCRIBERS: {subs_guard:#?}");
 
             debug!(tag: "registrator_task", "Accepted a heartbeat from '{peer}' listening for data at port {recv_port}.");
         }
