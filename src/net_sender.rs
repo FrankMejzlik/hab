@@ -3,8 +3,11 @@
 //!
 
 use std::collections::BTreeMap;
-use std::sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex};
 use std::net::{Ipv4Addr, SocketAddrV4};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 // ---
 use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;

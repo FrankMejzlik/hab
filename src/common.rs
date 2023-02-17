@@ -4,10 +4,49 @@
 
 use std::error::Error as StdError;
 use std::fmt;
-
 // ---
 use clap::Parser;
+use rand::{distributions::Distribution, Rng};
 // ---
+
+///
+/// A weighed discrete distribution.
+///
+/// The provided weights of the distribution do NOT need to sum up to 1.
+/// Only the proportion of the total sum matters.
+///
+struct DiscreteDistribution {
+    /// Weights of the discrete events (no need to sum up to 1).
+    weights: Vec<f64>,
+}
+
+impl DiscreteDistribution {
+    ///
+    /// Constructs the discrete distribution with the probabilities proportional to the provided weights.
+    ///
+    /// # Arguments
+    /// * `weights` - Weights to determine the probability of the given event (index) to occur.
+    ///
+    fn new(weights: Vec<f64>) -> DiscreteDistribution {
+        DiscreteDistribution { weights }
+    }
+}
+
+impl Distribution<usize> for DiscreteDistribution {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> usize {
+        let total_weight: f64 = self.weights.iter().sum();
+        let threshold = total_weight * rng.gen::<f64>();
+
+        let mut cumulative_weight = 0.0;
+        for (value, weight) in (0..self.weights.len()).zip(self.weights.iter()) {
+            cumulative_weight += weight;
+            if cumulative_weight >= threshold {
+                return value;
+            }
+        }
+        unreachable!()
+    }
+}
 
 // ***
 // The general error type we're using throught this program.
@@ -290,4 +329,50 @@ macro_rules! error {
             log::error!($($arg)+);
     }};
 
+}
+
+#[cfg(test)]
+mod tests {
+
+    // ---
+    use rand::rngs::OsRng;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
+    // ---
+    use super::*;
+
+    // --- Random generators ---
+    /// A seedable CSPRNG used for number generation
+    type CsPrng = ChaCha20Rng;
+
+    #[test]
+    fn test_discrete_distribution() {
+        const NUM_ITERS: usize = 1000;
+        const DELTA: f32 = 0.75;
+
+        let mut seed_rng = OsRng;
+        let random_seed = seed_rng.gen::<u64>();
+        let mut rng = CsPrng::seed_from_u64(random_seed);
+
+        let weights = vec![1.0, 2.0, 4.0, 8.0];
+        let dist = DiscreteDistribution::new(weights);
+
+        let mut hist = vec![0, 0, 0, 0];
+        for _ in 0..NUM_ITERS {
+            let idx = dist.sample(&mut rng);
+            hist[idx] += 1;
+        }
+        println!("hist: {hist:?}");
+
+        for (i, x) in hist.iter().enumerate() {
+            if i == 0 {
+                continue;
+            }
+            let prev = hist[i - 1];
+            assert!(
+                (prev as f32) < ((*x as f32) * DELTA),
+                "The variance in the samples is too large!"
+            );
+        }
+    }
 }
