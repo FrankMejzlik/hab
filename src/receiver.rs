@@ -66,13 +66,19 @@ impl ReceiverTrait for Receiver {
             log_output!(hash, &signed_block);
             debug!(tag: "receiver", "Received signed block of {} bytes with hash '{hash}'.", signed_block.len());
 
-            let valid_msg = match self.verifier.verify(signed_block) {
+            let (valid_msg, sign_hash, pks_hash) = match self.verifier.verify(signed_block) {
                 Ok(x) => x,
-                Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
+                Err(e) => {
+                    warn!("Invalid block thrown away! ERROR: {e}");
+                    continue;
+                }
             };
 
             // STDOUT
-            println!("{hash}: {valid_msg:?}");
+            println!(
+                "msg: {}\n\thash: {hash}\n\tsignature: {sign_hash}\n\thash_pks: {pks_hash}",
+                String::from_utf8_lossy(&valid_msg)
+            );
         }
     }
 }

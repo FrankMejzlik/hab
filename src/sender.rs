@@ -2,22 +2,22 @@
 //! The main module providing high-level API for the sender of the data.
 //!
 
+use slice_of_array::SliceFlatExt;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{mem::size_of_val, thread};
-use slice_of_array::SliceFlatExt;
 // ---
-use chrono::Local;
 use crate::block_signer::BlockSignerParams;
+use chrono::Local;
 use xxhash_rust::xxh3::xxh3_64;
 // ---
-#[allow(unused_imports)]
-use crate::{debug, error, info, log_input, trace, warn};
 use crate::config::BlockSignerInst;
 use crate::net_sender::{NetSender, NetSenderParams};
 use crate::traits::{BlockSignerTrait, SenderTrait};
+#[allow(unused_imports)]
+use crate::{debug, error, info, log_input, trace, warn};
 
 #[derive(Debug)]
 pub struct SenderParams {
@@ -78,18 +78,26 @@ impl SenderTrait for Sender {
         while self.params.running.load(Ordering::Acquire) {
             let data = Self::read_input(input);
 
-			let hash_sign;
-			let hash_pks;
+            let hash_sign;
+            let hash_pks;
             let signed_data = match self.signer.sign(&data) {
                 Ok(x) => {
-					hash_sign = xxh3_64(&x.signature.data.flat().flat());
-					let mut tmp = 0;
-					for pk in x.pub_keys.iter() {
-						tmp = tmp + xxh3_64(pk.data.as_ref());
-					}
-					hash_pks = tmp;
-					bincode::serialize(&x).expect("Should be seriallizable.")
-				},
+                    let mut tmp2 = 0;
+                    for x in &x.signature.data {
+                        for y in x {
+                            let h = xxh3_64(&y);
+                            tmp2 = tmp2 | h;
+                        }
+                    }
+
+                    let mut tmp = 0;
+                    for pk in x.pub_keys.iter() {
+                        tmp = tmp + xxh3_64(pk.data.as_ref());
+                    }
+                    hash_pks = tmp;
+                    hash_sign = tmp2;
+                    bincode::serialize(&x).expect("Should be seriallizable.")
+                }
                 Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
             };
 
@@ -99,7 +107,10 @@ impl SenderTrait for Sender {
             debug!(tag: "sender", "\tBroadcasting {} bytes with hash '{hash}'...", signed_data.len());
 
             // STDOUT
-            println!("data: {hash}\nsignature: {hash_sign}\nhash_pks: {hash_pks}");
+            println!(
+                "msg: {}\n\thash: {hash}\n\tsignature: {hash_sign}\n\thash_pks: {hash_pks}",
+                String::from_utf8_lossy(&data)
+            );
 
             if let Err(e) = self.net_sender.broadcast(&signed_data) {
                 panic!("Failed to broadcast the data block!\nERROR: {:?}", e);

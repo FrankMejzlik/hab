@@ -12,6 +12,8 @@ use serde::de::Deserializer;
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
+use slice_of_array::SliceFlatExt;
+use xxhash_rust::xxh3::xxh3_64;
 // ---
 use crate::common::Error;
 pub use crate::horst::{
@@ -233,10 +235,25 @@ impl<
         }
     }
 
-    fn verify(&mut self, data: Vec<u8>) -> Result<Vec<u8>, Error> {
+    fn verify(&mut self, data: Vec<u8>) -> Result<(Vec<u8>, u64, u64), Error> {
         let block: Self::SignedBlock =
             bincode::deserialize(&data).expect("Should be deserializable!");
 
-        Ok(block.data)
+        let mut tmp2 = 0;
+        for x in &block.signature.data {
+            for y in x {
+                let h = xxh3_64(&y);
+                tmp2 = tmp2 | h;
+            }
+        }
+
+        let mut tmp = 0;
+        for pk in block.pub_keys.iter() {
+            tmp = tmp + xxh3_64(pk.data.as_ref());
+        }
+        let hash_pks = tmp;
+        let hash_sign = tmp2;
+
+        Ok((block.data, hash_sign, hash_pks))
     }
 }

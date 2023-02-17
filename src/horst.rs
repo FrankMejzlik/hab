@@ -27,6 +27,7 @@
 //! * `ImplCsPrng` - Cryptographically safe pseudo-random number generator.
 //!
 use std::boxed::Box;
+use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
 // ---
@@ -38,6 +39,7 @@ use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
+use serde_big_array::BigArray;
 use sha3::Digest;
 
 // ---
@@ -99,14 +101,13 @@ impl<const T: usize, const N: usize> Display for HorstSecretKey<T, N> {
     }
 }
 
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HorstPublicKey<const N: usize> {
-    pub data: [u8; N],
+    pub data: Vec<u8>,
 }
 impl<const N: usize> HorstPublicKey<N> {
     pub fn new(root_hash: &[u8; N]) -> Self {
-        let mut data = [0u8; N];
+        let mut data = vec![0u8; N];
         data.copy_from_slice(root_hash);
 
         HorstPublicKey { data }
@@ -121,65 +122,25 @@ impl<const N: usize> Display for HorstPublicKey<N> {
         )
     }
 }
-impl<const N: usize> Serialize for HorstPublicKey<N> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // 3 is the number of fields in the struct.
-        let mut state = serializer.serialize_struct("HorstPublicKey", 1)?;
-        state.serialize_field("data", self.data.as_slice())?;
-        state.end()
-    }
-}
 
-
-impl<'de, const N: usize> Deserialize<'de> for HorstPublicKey<N> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let data = [0; N];
-        // TODO: !!!
-
-        Ok(Self::new(&data))
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HorstSignature<const N: usize, const K: usize, const TAUPLUS: usize> {
-    pub data: [[[u8; N]; TAUPLUS]; K],
+    pub data: Vec<Vec<Vec<u8>>>,
 }
 impl<const N: usize, const K: usize, const TAUPLUS: usize> HorstSignature<N, K, TAUPLUS> {
     pub fn new(data: [[[u8; N]; TAUPLUS]; K]) -> Self {
-        HorstSignature { data }
-    }
-}
-impl<const N: usize, const K: usize, const TAUPLUS: usize> Serialize
-    for HorstSignature<N, K, TAUPLUS>
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // 3 is the number of fields in the struct.
-        let mut state = serializer.serialize_struct("HorstPublicKey", 1)?;
-        state.serialize_field("data", self.data.flat().flat())?;
-        state.end()
-    }
-}
+        let mut vec = vec![];
+        vec.reserve(K);
 
-impl<'de, const N: usize, const K: usize, const TAUPLUS: usize> Deserialize<'de>
-    for HorstSignature<N, K, TAUPLUS>
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let data = [[[0; N]; TAUPLUS]; K];
-        // TODO: !!!
-
-        Ok(Self::new(data))
+        for x in data {
+            let mut vx = vec![];
+            vx.reserve(TAUPLUS);
+            for y in x {
+                vx.push(y.to_vec());
+            }
+            vec.push(vx);
+        }
+        HorstSignature { data: vec }
     }
 }
 
@@ -189,8 +150,8 @@ impl<const N: usize, const K: usize, const TAUPLUS: usize> Display
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         writeln!(f, "<<< HorstSignature >>>")?;
 
-        for (i, segment) in self.data.into_iter().enumerate() {
-            for (j, s) in segment.into_iter().enumerate() {
+        for (i, segment) in self.data.iter().enumerate() {
+            for (j, s) in segment.iter().enumerate() {
                 if j == 0 {
                     writeln!(f, "[SK_{}] => \t {}", i, utils::to_hex(&s))?;
                 } else {
@@ -332,12 +293,12 @@ impl<
         let indices = utils::get_segment_indices::<K, MSG_HASH_SIZE, TAU>(&msg_hash);
         // debug!("indices: {:?}", indices);
 
-        for (i, segment) in signature.data.into_iter().enumerate() {
+        for (i, segment) in signature.data.iter().enumerate() {
             let mut idx = indices[i];
 
             // TODO: How to initialize
             let mut parent_hash = Self::TreeHashFn::digest(b"");
-            for (j, s) in segment.into_iter().enumerate() {
+            for (j, s) in segment.iter().enumerate() {
                 // SK
                 if j == 0 {
                     // Hash the secret segment
