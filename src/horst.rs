@@ -99,13 +99,14 @@ impl<const T: usize, const N: usize> Display for HorstSecretKey<T, N> {
     }
 }
 
+
 #[derive(Debug, Clone)]
 pub struct HorstPublicKey<const N: usize> {
-    data: Box<[u8; N]>,
+    pub data: [u8; N],
 }
 impl<const N: usize> HorstPublicKey<N> {
     pub fn new(root_hash: &[u8; N]) -> Self {
-        let mut data = Box::new([0u8; N]);
+        let mut data = [0u8; N];
         data.copy_from_slice(root_hash);
 
         HorstPublicKey { data }
@@ -116,7 +117,7 @@ impl<const N: usize> Display for HorstPublicKey<N> {
         writeln!(
             f,
             "<<< HorstPublicKey >>>\n\t[00000]: {}",
-            utils::to_hex(&*self.data)
+            utils::to_hex(&self.data)
         )
     }
 }
@@ -131,6 +132,8 @@ impl<const N: usize> Serialize for HorstPublicKey<N> {
         state.end()
     }
 }
+
+
 impl<'de, const N: usize> Deserialize<'de> for HorstPublicKey<N> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -145,7 +148,7 @@ impl<'de, const N: usize> Deserialize<'de> for HorstPublicKey<N> {
 
 #[derive(Debug, Clone)]
 pub struct HorstSignature<const N: usize, const K: usize, const TAUPLUS: usize> {
-    data: [[[u8; N]; TAUPLUS]; K],
+    pub data: [[[u8; N]; TAUPLUS]; K],
 }
 impl<const N: usize, const K: usize, const TAUPLUS: usize> HorstSignature<N, K, TAUPLUS> {
     pub fn new(data: [[[u8; N]; TAUPLUS]; K]) -> Self {
@@ -359,7 +362,7 @@ impl<
 
             // Check the equality with the PK
             let act_root = &parent_hash.as_slice()[..TREE_HASH_SIZE];
-            if act_root != *pk.data {
+            if act_root != pk.data {
                 return false;
             }
         }

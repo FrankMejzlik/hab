@@ -7,16 +7,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{mem::size_of_val, thread};
+use slice_of_array::SliceFlatExt;
 // ---
+use chrono::Local;
 use crate::block_signer::BlockSignerParams;
-use crate::config::BlockSignerInst;
-use crate::net_sender::{NetSender, NetSenderParams};
-use crate::traits::{BlockSignerTrait, SenderTrait};
 use xxhash_rust::xxh3::xxh3_64;
 // ---
 #[allow(unused_imports)]
 use crate::{debug, error, info, log_input, trace, warn};
-use chrono::Local;
+use crate::config::BlockSignerInst;
+use crate::net_sender::{NetSender, NetSenderParams};
+use crate::traits::{BlockSignerTrait, SenderTrait};
 
 #[derive(Debug)]
 pub struct SenderParams {
@@ -77,8 +78,18 @@ impl SenderTrait for Sender {
         while self.params.running.load(Ordering::Acquire) {
             let data = Self::read_input(input);
 
+			let hash_sign;
+			let hash_pks;
             let signed_data = match self.signer.sign(&data) {
-                Ok(x) => bincode::serialize(&x).expect("Should be seriallizable."),
+                Ok(x) => {
+					hash_sign = xxh3_64(&x.signature.data.flat().flat());
+					let mut tmp = 0;
+					for pk in x.pub_keys.iter() {
+						tmp = tmp + xxh3_64(pk.data.as_ref());
+					}
+					hash_pks = tmp;
+					bincode::serialize(&x).expect("Should be seriallizable.")
+				},
                 Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
             };
 
@@ -88,7 +99,7 @@ impl SenderTrait for Sender {
             debug!(tag: "sender", "\tBroadcasting {} bytes with hash '{hash}'...", signed_data.len());
 
             // STDOUT
-            println!("{hash}");
+            println!("data: {hash}\nsignature: {hash_sign}\nhash_pks: {hash_pks}");
 
             if let Err(e) = self.net_sender.broadcast(&signed_data) {
                 panic!("Failed to broadcast the data block!\nERROR: {:?}", e);
