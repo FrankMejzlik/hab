@@ -24,10 +24,11 @@ use std::thread;
 use clap::Parser;
 use ctrlc;
 // ---
+use crate::common::{Args, ProgramMode};
+use crate::config::LOGS_DIR;
+use crate::diag_server::DiagServer;
+use crate::sender::{Sender, SenderParams};
 use crate::traits::{DiagServerTrait, SenderTrait};
-use common::{Args, ProgramMode};
-use diag_server::DiagServer;
-use sender::{Sender, SenderParams};
 
 #[allow(dead_code)]
 fn run_diag_server(_args: Args, running: Arc<AtomicBool>) {
@@ -78,10 +79,17 @@ fn run_receiver(_args: Args, _running: Arc<AtomicBool>) {
     // TODO
 }
 
+fn init_application() {
+    // Create the directory for logs
+    std::fs::create_dir_all(LOGS_DIR).expect("The logs directory should be created.");
+}
+
 fn main() {
     if let Err(e) = common::setup_logger() {
         info!("Unable to initialize the logger!\nERROR: {}", e);
     }
+    init_application();
+
     // Flag that indicates if the app shoul still run
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();

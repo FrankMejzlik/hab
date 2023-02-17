@@ -8,6 +8,8 @@ use std::fmt;
 use clap::Parser;
 use rand::{distributions::Distribution, Rng};
 // ---
+use crate::config;
+use crate::utils;
 
 ///
 /// A weighed discrete distribution.
@@ -131,9 +133,9 @@ pub fn setup_logger() -> Result<(), fern::InitError> {
         // Disable all by default
         .level(log::LevelFilter::Warn)
         // Allow for this module
-        .level_for("hashsig", log::LevelFilter::Trace)
+        .level_for(utils::binary_name(), log::LevelFilter::Trace)
         .chain(std::io::stdout())
-        .chain(fern::log_file("output.log")?)
+        .chain(fern::log_file(format!("{}/output.log", config::LOGS_DIR))?)
         .apply()?;
     Ok(())
 }

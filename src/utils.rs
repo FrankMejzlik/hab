@@ -88,6 +88,16 @@ pub fn unix_ts() -> UnixTimestamp {
     }
 }
 
+/// Returns the name of this binary.
+pub fn binary_name() -> String {
+    module_path!()
+        .split("::")
+        .into_iter()
+        .next()
+        .unwrap_or_default()
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
