@@ -86,6 +86,9 @@ impl SenderTrait for Sender {
             let hash = xxh3_64(&signed_data);
             log_input!(hash, &signed_data);
             debug!(tag: "sender", "\tBroadcasting {} bytes with hash '{hash}'...", signed_data.len());
+			
+			// STDOUT
+			println!("{hash}");
 
             if let Err(e) = self.net_sender.broadcast(&signed_data) {
                 panic!("Failed to broadcast the data block!\nERROR: {:?}", e);

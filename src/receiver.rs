@@ -67,6 +67,9 @@ impl ReceiverTrait for Receiver {
             let hash = xxh3_64(&signed_block);
             log_output!(hash, &signed_block);
             debug!(tag: "receiver", "Received signed block of {} bytes with hash '{hash}'.", signed_block.len());
+
+			// STDOUT
+			println!("{hash}");
         }
     }
 }
