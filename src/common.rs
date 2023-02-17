@@ -2,14 +2,25 @@
 //! Code shared throught the project.
 //!
 
+use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt;
+use std::net::SocketAddr;
+use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, Mutex};
 // ---
 use clap::Parser;
 use rand::{distributions::Distribution, Rng};
 // ---
 use crate::config;
 use crate::utils;
+
+//
+// Usefull type aliases
+//
+pub type UnixTimestamp = u128;
+pub type SubscribersMapArc = Arc<Mutex<BTreeMap<SocketAddr, UnixTimestamp>>>;
+pub type PortNumber = u16;
 
 ///
 /// A weighed discrete distribution.
@@ -53,8 +64,6 @@ impl Distribution<usize> for DiscreteDistribution {
 // ***
 // The general error type we're using throught this program.
 // ***
-
-pub type UnixTimestamp = u128;
 
 /// General error type used in this binary.
 #[derive(Debug)]
@@ -163,10 +172,9 @@ macro_rules! trace {
             log_file
                 .write_all(
                     format!(
-                        "[{}][{}][{}] {}\n",
+                        "[{}] {}\n",
                         chrono::Local::now().format("%H:%M:%S"),
-                        "TRACE",
-                        $tag,
+
                         inner
                     )
                     .as_bytes(),
@@ -200,10 +208,8 @@ macro_rules! debug {
             log_file
                 .write_all(
                     format!(
-                        "[{}][{}][{}] {}\n",
+                        "[{}] {}\n",
                         chrono::Local::now().format("%H:%M:%S"),
-                        "DEBUG",
-                        $tag,
                         inner
                     )
                     .as_bytes(),
@@ -237,10 +243,8 @@ macro_rules! info {
             log_file
                 .write_all(
                     format!(
-                        "[{}][{}][{}] {}\n",
+                        "[{}] {}\n",
                         chrono::Local::now().format("%H:%M:%S"),
-                        "INFO",
-                        $tag,
                         inner
                     )
                     .as_bytes(),
@@ -275,10 +279,8 @@ macro_rules! warn {
             log_file
                 .write_all(
                     format!(
-                        "[{}][{}][{}] {}\n",
+                        "[{}] {}\n",
                         chrono::Local::now().format("%H:%M:%S"),
-                        "WARN",
-                        $tag,
                         inner
                     )
                     .as_bytes(),
@@ -313,10 +315,8 @@ macro_rules! error {
             log_file
                 .write_all(
                     format!(
-                        "[{}][{}][{}] {}\n",
+                        "[{}] {}\n",
                         chrono::Local::now().format("%H:%M:%S"),
-                        "ERROR",
-                        $tag,
                         inner
                     )
                     .as_bytes(),
@@ -331,6 +331,59 @@ macro_rules! error {
             log::error!($($arg)+);
     }};
 
+}
+
+/// A global counter for the number of processed input data blocks.
+pub static LOG_INPUT_COUNTER: AtomicUsize = AtomicUsize::new(0);
+/// A global counter for the number of processed output data blocks.
+pub static LOG_OUTPUT_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+#[macro_export]
+macro_rules! log_input {
+    ($hash:expr, $data:expr) => {{
+        use crate::common::LOG_INPUT_COUNTER;
+        use crate::config::INPUT_DBG_DIR;
+        use std::io::Write;
+        use std::sync::atomic::Ordering;
+
+        let mut log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(format!(
+                "{}/{:06}_{:020}.in",
+                INPUT_DBG_DIR,
+                LOG_INPUT_COUNTER.load(Ordering::Acquire),
+                $hash
+            ))
+            .unwrap();
+
+        log_file.write_all($data).unwrap();
+        LOG_INPUT_COUNTER.fetch_add(1, Ordering::Release);
+    }};
+}
+
+#[macro_export]
+macro_rules! log_output {
+    ($hash:expr, $data:expr) => {{
+        use crate::common::LOG_OUTPUT_COUNTER;
+        use crate::config::OUTPUT_DBG_DIR;
+        use std::io::Write;
+        use std::sync::atomic::Ordering;
+
+        let mut log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(format!(
+                "{}/{:06}_{:020}.in",
+                OUTPUT_DBG_DIR,
+                LOG_OUTPUT_COUNTER.load(Ordering::Acquire),
+                $hash
+            ))
+            .unwrap();
+
+        log_file.write_all($data).unwrap();
+        LOG_OUTPUT_COUNTER.fetch_add(1, Ordering::Release);
+    }};
 }
 
 #[cfg(test)]

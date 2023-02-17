@@ -12,9 +12,10 @@ use crate::block_signer::BlockSignerParams;
 use crate::config::BlockSignerInst;
 use crate::net_sender::{NetSender, NetSenderParams};
 use crate::traits::{BlockSignerTrait, SenderTrait};
-#[allow(unused_imports)]
+use xxhash_rust::xxh3::xxh3_64;
 // ---
-use crate::{debug, error, info, trace, warn};
+#[allow(unused_imports)]
+use crate::{debug, error, info, log_input, trace, warn};
 use chrono::Local;
 
 #[derive(Debug)]
@@ -49,19 +50,28 @@ impl Sender {
         }
     }
     // ---
-    #[cfg(feature = "simulate_stdin")]
-    fn read_input(input: &mut dyn Read) -> Vec<u8> {
-        thread::sleep(Duration::from_secs(5));
-        let msg = Local::now().format("%d-%m-%Y %H:%M:%S").to_string();
-        debug!(tag: "sender", "Processing input '{}'...", &msg);
-        msg.into_bytes()
-    }
-    #[cfg(not(feature = "simulate_stdin"))]
-    fn read_input(input: &mut dyn Read) -> Vec<u8> {
+
+    /// Reads the available chunk of data from the provided input.
+    fn read_input(_input: &mut dyn Read) -> (Vec<u8>, u64) {
         let mut msg = String::default();
-        input.read_to_string(&mut msg).expect("Fail");
+
+        #[cfg(feature = "simulate_stdin")]
+        {
+            // We simulate periodic data coming via input
+            thread::sleep(Duration::from_secs(5));
+            msg = Local::now().format("%d-%m-%Y %H:%M:%S").to_string();
+        }
+
+        #[cfg(not(feature = "simulate_stdin"))]
+        _input.read_to_string(&mut msg).expect("Fail");
+
         debug!(tag: "sender", "Processing input '{}'...", &msg);
-        msg.into_bytes()
+
+        let bytes = msg.into_bytes();
+        let hash = xxh3_64(&bytes);
+
+        log_input!(hash, &bytes);
+        (bytes, hash)
     }
 }
 
@@ -69,7 +79,7 @@ impl SenderTrait for Sender {
     fn run(&mut self, input: &mut dyn Read) {
         // The main loop as long as the app should run
         while self.params.running.load(Ordering::Acquire) {
-            let data = Self::read_input(input);
+            let (data, hash) = Self::read_input(input);
 
             let signed_data = match self.signer.sign(&data) {
                 Ok(x) => x.to_bytes(),

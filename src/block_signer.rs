@@ -192,7 +192,6 @@ impl<
             &signature,
             &self.layers.data[0][0].key.public
         ));
-        info!("Signature check OK.");
         // --- sanity check ---
 
         Ok(SignedBlock {

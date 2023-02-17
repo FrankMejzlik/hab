@@ -15,7 +15,6 @@ mod sender;
 mod traits;
 mod utils;
 
-use chrono::Duration;
 use std::fs::File;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -27,7 +26,6 @@ use clap::Parser;
 use ctrlc;
 // ---
 use crate::common::{Args, ProgramMode};
-use crate::config::LOGS_DIR;
 use crate::diag_server::DiagServer;
 use crate::receiver::{Receiver, ReceiverParams};
 use crate::sender::{Sender, SenderParams};
@@ -106,8 +104,16 @@ fn run_receiver(args: Args, running: Arc<AtomicBool>) {
 }
 
 fn init_application() -> Arc<AtomicBool> {
+    // Clear the directories before every launch
+    _ = std::fs::remove_dir_all(config::INPUT_DBG_DIR);
+    _ = std::fs::remove_dir_all(config::OUTPUT_DBG_DIR);
+
     // Create the directory for logs
-    std::fs::create_dir_all(LOGS_DIR).expect("The logs directory should be created.");
+    std::fs::create_dir_all(config::LOGS_DIR).expect("The logs directory should be created.");
+
+    // Create the directories for debugging input/output
+    std::fs::create_dir_all(config::INPUT_DBG_DIR).expect("The directory should be created.");
+    std::fs::create_dir_all(config::OUTPUT_DBG_DIR).expect("The directory should be created.");
 
     // Flag that indicates if the app shoul still run
     let running = Arc::new(AtomicBool::new(true));
