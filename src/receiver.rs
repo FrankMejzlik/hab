@@ -12,8 +12,10 @@ use crate::block_signer::BlockSignerParams;
 use crate::config::BlockSignerInst;
 use crate::net_receiver::{NetReceiver, NetReceiverParams};
 use crate::traits::{BlockSignerTrait, ReceiverTrait};
-#[allow(unused_imports)]
+use xxhash_rust::xxh3::xxh3_64;
 // ---
+use crate::log_output;
+#[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
@@ -52,8 +54,19 @@ impl ReceiverTrait for Receiver {
     fn run(&mut self, _output: &mut dyn Write) {
         // The main loop as long as the app should run
         while self.params.running.load(Ordering::Acquire) {
-            debug!("Receiver running...");
-            thread::sleep(Duration::from_secs(1));
+            // Block until we receive some whole signed block
+            let signed_block = match self.net_receiver.receive() {
+                Ok(x) => x,
+                Err(e) => {
+                    warn!("Error while receiving the signed data block! ERROR: {e}");
+                    continue;
+                }
+            };
+
+            // Debug log the input signed block
+            let hash = xxh3_64(&signed_block);
+            log_output!(hash, &signed_block);
+            debug!(tag: "receiver", "Received signed block of {} bytes with hash '{hash}'.", signed_block.len());
         }
     }
 }

@@ -70,6 +70,13 @@ impl Distribution<usize> for DiscreteDistribution {
 pub struct Error {
     msg: String,
 }
+impl Error {
+    pub fn new(msg: &str) -> Self {
+        Error {
+            msg: msg.to_string(),
+        }
+    }
+}
 
 /// The error must be printable.
 impl fmt::Display for Error {
@@ -374,7 +381,7 @@ macro_rules! log_output {
             .create(true)
             .append(true)
             .open(format!(
-                "{}/{:06}_{:020}.in",
+                "{}/{:06}_{:020}.out",
                 OUTPUT_DBG_DIR,
                 LOG_OUTPUT_COUNTER.load(Ordering::Acquire),
                 $hash

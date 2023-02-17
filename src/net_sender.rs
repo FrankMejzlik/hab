@@ -69,12 +69,10 @@ impl NetSender {
     }
 
     pub fn broadcast(&self, data: &[u8]) -> Result<(), NetSenderError> {
-        debug!(tag: "sender", "\tBroadcasting {} bytes...", data.len());
-
         let subs_guard = self.subscribers.lock().expect("Should be lockable!");
 
         for (dest_sock_addr, _valid_until) in subs_guard.iter() {
-            debug!(tag: "sender", "\t\tSending to '{}'.", data.len());
+            debug!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
             if let Err(e) = self
                 .rt
                 .block_on(self.sender_socket.send_to(data, dest_sock_addr.clone()))
@@ -98,7 +96,7 @@ impl NetSender {
         info!(tag: "registrator_task", "Accepting heartbeats from receivers at {addr}...");
 
         while running.load(Ordering::Acquire) {
-            let mut buf = [0; 1024];
+            let mut buf = [0; config::BUFFER_SIZE];
             let (recv, peer) = match socket.recv_from(&mut buf).await {
                 Ok(x) => x,
                 Err(e) => {

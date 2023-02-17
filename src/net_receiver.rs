@@ -16,8 +16,9 @@ use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 use tungstenite::http::uri::Port;
 // ---
-use crate::common::PortNumber;
+use crate::common::{Error, PortNumber};
 use crate::config;
+use crate::traits::NetworkReceiverTrait;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
@@ -63,6 +64,25 @@ impl NetReceiver {
         ));
 
         NetReceiver { rt, socket }
+    }
+
+    pub fn receive(&mut self) -> Result<Vec<u8>, Error> {
+        let mut buf = vec![0; config::BUFFER_SIZE];
+        let (recv, peer) = match self.rt.block_on(self.socket.recv_from(&mut buf)) {
+            Ok(x) => x,
+            Err(e) => {
+                return Err(Error::new(&format!(
+                    "Failed to receive the datagram! ERROR: {}!",
+                    e
+                )))
+            }
+        };
+        debug!(tag: "receiver", "\t\tReceived {recv} bytes from {peer}.");
+
+        // Copy the actual bytes to the resulting vector
+        let mut res = vec![0; recv];
+        res.copy_from_slice(&buf[..recv]);
+        Ok(res)
     }
 
     async fn heartbeat_task(addr: String, running: Arc<AtomicBool>, recv_port: PortNumber) {

@@ -14,6 +14,7 @@ pub const INPUT_DBG_DIR: &str = "logs/input/";
 pub const OUTPUT_DBG_DIR: &str = "logs/output/";
 
 pub const SUBSCRIBER_LIFETIME: u128 = 10_000;
+pub const BUFFER_SIZE: usize = 32 * 1024;
 
 // ***************************************
 //             PARAMETERS

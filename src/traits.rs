@@ -126,9 +126,9 @@ pub trait NetworkReceiverTrait {
     type Error: ErrorTrait;
 
     ///
-    /// Sends the provided data to the currently subscribed receivers.
+    /// Blocks until some signed blocks are received.
     ///
-    fn broadcast(&self, data: &[u8]) -> Result<(), Self::Error>;
+    fn receive(&mut self) -> Result<Vec<u8>, Self::Error>;
 }
 
 ///
