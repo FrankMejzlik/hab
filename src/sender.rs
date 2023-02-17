@@ -78,7 +78,7 @@ impl SenderTrait for Sender {
             let data = Self::read_input(input);
 
             let signed_data = match self.signer.sign(&data) {
-                Ok(x) => x.to_bytes(),
+                Ok(x) => bincode::serialize(&x).expect("Should be seriallizable."),
                 Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
             };
 
@@ -86,9 +86,9 @@ impl SenderTrait for Sender {
             let hash = xxh3_64(&signed_data);
             log_input!(hash, &signed_data);
             debug!(tag: "sender", "\tBroadcasting {} bytes with hash '{hash}'...", signed_data.len());
-			
-			// STDOUT
-			println!("{hash}");
+
+            // STDOUT
+            println!("{hash}");
 
             if let Err(e) = self.net_sender.broadcast(&signed_data) {
                 panic!("Failed to broadcast the data block!\nERROR: {:?}", e);

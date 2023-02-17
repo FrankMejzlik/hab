@@ -77,3 +77,16 @@ pub type BlockSignerInst = BlockSigner<
     MsgHashFn,
     TreeHashFn,
 >;
+
+// Alias for the specific verifier we'll be using
+pub type BlockVerifierInst = BlockSigner<
+    K,
+    TAU,
+    { TAU + 1 },
+    T,
+    MSG_HASH_SIZE,
+    TREE_HASH_SIZE,
+    CsPrng,
+    MsgHashFn,
+    TreeHashFn,
+>;

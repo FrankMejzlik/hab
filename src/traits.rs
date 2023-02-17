@@ -68,14 +68,14 @@ pub trait BlockSignerTrait {
 pub trait BlockVerifierTrait {
     type Error: ErrorTrait;
     type Signer: SignatureSchemeTrait;
-    type BlockVerifyierParams;
+    type BlockVerifierParams;
     type SecretKey;
     type PublicKey;
     type Signature;
     type SignedBlock;
 
-    fn new(params: Self::BlockVerifyierParams) -> Self;
-    fn verify(&mut self, data: Self::SignedBlock) -> Result<Vec<u8>, Self::Error>;
+    fn new(params: Self::BlockVerifierParams) -> Self;
+    fn verify(&mut self, data: Vec<u8>) -> Result<Vec<u8>, Self::Error>;
 }
 
 ///

@@ -4,11 +4,13 @@
 
 use std::marker::PhantomData;
 // ---
-use bincode::serialize;
+use bincode::{deserialize, serialize};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use rand_core::{CryptoRng, RngCore, SeedableRng};
-use serde::ser::{Serialize, SerializeStruct, Serializer};
+use serde::de::Deserializer;
+use serde::ser::{SerializeStruct, Serializer};
+use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
 use crate::common::Error;
@@ -16,7 +18,7 @@ pub use crate::horst::{
     HorstKeypair, HorstPublicKey as PublicKey, HorstSecretKey as SecretKey, HorstSigScheme,
     HorstSignature as Signature,
 };
-use crate::traits::{BlockSignerTrait, SignatureSchemeTrait};
+use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait};
 use crate::utils::UnixTimestamp;
 
 ///
@@ -39,30 +41,11 @@ pub struct BlockSignerParams {
 }
 
 /// Struct holding a data to send with the signature and piggy-backed public keys.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize> {
     pub data: Vec<u8>,
     pub signature: Signature,
     pub pub_keys: Vec<PublicKey>,
-}
-impl<Signature: Serialize, PublicKey: Serialize> SignedBlock<Signature, PublicKey> {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        serialize(&self).unwrap()
-    }
-}
-
-impl<Signature: Serialize, PublicKey: Serialize> Serialize for SignedBlock<Signature, PublicKey> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // 3 is the number of fields in the struct.
-        let mut state = serializer.serialize_struct("SignedBlock", 3)?;
-        state.serialize_field("data", &self.data)?;
-        state.serialize_field("signature", &self.signature)?;
-        state.serialize_field("pub_keys", &self.pub_keys)?;
-        state.end()
-    }
 }
 
 struct KeyLayers<const T: usize, const N: usize> {
@@ -199,5 +182,61 @@ impl<
             signature,
             pub_keys,
         })
+    }
+}
+
+impl<
+        const K: usize,
+        const TAU: usize,
+        const TAUPLUS: usize,
+        const T: usize,
+        const MSG_HASH_SIZE: usize,
+        const TREE_HASH_SIZE: usize,
+        CsPrng: CryptoRng + SeedableRng + RngCore,
+        MsgHashFn: Digest,
+        TreeHash: Digest,
+    > BlockVerifierTrait
+    for BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHash>
+{
+    type Error = Error;
+    type Signer = HorstSigScheme<
+        K,
+        TAU,
+        TAUPLUS,
+        T,
+        MSG_HASH_SIZE,
+        TREE_HASH_SIZE,
+        CsPrng,
+        MsgHashFn,
+        TreeHash,
+    >;
+
+    type SecretKey = <Self::Signer as SignatureSchemeTrait>::SecretKey;
+    type PublicKey = <Self::Signer as SignatureSchemeTrait>::PublicKey;
+    type Signature = <Self::Signer as SignatureSchemeTrait>::Signature;
+    type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
+    type BlockVerifierParams = BlockSignerParams;
+
+    /// Constructs and initializes a block signer with the given parameters.
+    fn new(params: BlockSignerParams) -> Self {
+        let mut rng = CsPrng::seed_from_u64(params.seed);
+        let mut layers = KeyLayers::new(1);
+
+        let keypair = Self::Signer::gen_key_pair(&mut rng);
+
+        layers.insert(0, keypair);
+
+        BlockSigner {
+            rng,
+            layers,
+            _p: PhantomData,
+        }
+    }
+
+    fn verify(&mut self, data: Vec<u8>) -> Result<Vec<u8>, Error> {
+        let block: Self::SignedBlock =
+            bincode::deserialize(&data).expect("Should be deserializable!");
+
+        Ok(block.data)
     }
 }

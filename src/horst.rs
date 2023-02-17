@@ -35,8 +35,9 @@ use hex::encode;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use rand_core::{CryptoRng, RngCore, SeedableRng};
+use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::ser::{SerializeStruct, Serializer};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha3::Digest;
 
 // ---
@@ -130,6 +131,17 @@ impl<const N: usize> Serialize for HorstPublicKey<N> {
         state.end()
     }
 }
+impl<'de, const N: usize> Deserialize<'de> for HorstPublicKey<N> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let data = [0; N];
+        // TODO: !!!
+
+        Ok(Self::new(&data))
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct HorstSignature<const N: usize, const K: usize, const TAUPLUS: usize> {
@@ -151,6 +163,20 @@ impl<const N: usize, const K: usize, const TAUPLUS: usize> Serialize
         let mut state = serializer.serialize_struct("HorstPublicKey", 1)?;
         state.serialize_field("data", self.data.flat().flat())?;
         state.end()
+    }
+}
+
+impl<'de, const N: usize, const K: usize, const TAUPLUS: usize> Deserialize<'de>
+    for HorstSignature<N, K, TAUPLUS>
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let data = [[[0; N]; TAUPLUS]; K];
+        // TODO: !!!
+
+        Ok(Self::new(data))
     }
 }
 
