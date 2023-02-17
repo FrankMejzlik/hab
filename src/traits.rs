@@ -4,7 +4,6 @@
 
 use std::error::Error as ErrorTrait;
 use std::io::{Read, Write};
-use std::sync::{atomic::AtomicBool, Arc};
 // ---
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use sha3::Digest;
@@ -16,7 +15,7 @@ use sha3::Digest;
 /// * `trait ReceiverTrait`
 ///
 pub trait SenderTrait {
-    fn run(&mut self, input: &dyn Read);
+    fn run(&mut self, input: &mut dyn Read);
 }
 
 ///
@@ -26,7 +25,7 @@ pub trait SenderTrait {
 /// * `trait SenderTrait`
 ///
 pub trait ReceiverTrait {
-    fn run(&mut self, output: &dyn Write);
+    fn run(&mut self, output: &mut dyn Write);
 }
 
 ///

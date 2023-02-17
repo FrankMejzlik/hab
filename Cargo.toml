@@ -31,5 +31,6 @@ ctrlc = "3.2"
 rand = "0.8"
 
 [features]
-default = ["debug"]
+default = ["debug", "simulate_stdin"]
 debug = []
+simulate_stdin = []

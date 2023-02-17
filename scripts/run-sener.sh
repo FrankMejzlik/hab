@@ -7,4 +7,4 @@ fi
 echo "Running sender as $BUILD_TYPE..."
 
 cd env/sender/
-../../target/${BUILD_TYPE}/hashsig sender
+../../target/${BUILD_TYPE}/hashsig sender "0.0.0.0:5555"

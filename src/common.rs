@@ -102,12 +102,12 @@ pub struct Args {
     /// What mode to launch the program in.
     #[clap(value_enum)]
     pub mode: ProgramMode,
+    /// The address of the sender.
+    #[clap()]
+    pub addr: String,
     /// Seed used for the CSPRNG.
     #[clap(short, long, default_value_t = 42)]
     pub seed: u64,
-    /// A port number to listen at.
-    #[clap(short, long, default_value_t = 5555)]
-    pub port: u32,
     /// The input file (if none, STDIN), only aplicable with `Sender`.
     #[clap(short, long)]
     pub input: Option<String>,
@@ -134,7 +134,7 @@ pub fn setup_logger() -> Result<(), fern::InitError> {
         .level(log::LevelFilter::Warn)
         // Allow for this module
         .level_for(utils::binary_name(), log::LevelFilter::Trace)
-        .chain(std::io::stdout())
+        //.chain(std::io::stdout())
         .chain(fern::log_file(format!("{}/output.log", config::LOGS_DIR))?)
         .apply()?;
     Ok(())

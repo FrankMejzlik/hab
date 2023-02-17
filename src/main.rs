@@ -10,10 +10,12 @@ mod horst;
 mod merkle_tree;
 mod net_receiver;
 mod net_sender;
+mod receiver;
 mod sender;
 mod traits;
 mod utils;
 
+use chrono::Duration;
 use std::fs::File;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -27,8 +29,9 @@ use ctrlc;
 use crate::common::{Args, ProgramMode};
 use crate::config::LOGS_DIR;
 use crate::diag_server::DiagServer;
+use crate::receiver::{Receiver, ReceiverParams};
 use crate::sender::{Sender, SenderParams};
-use crate::traits::{DiagServerTrait, SenderTrait};
+use crate::traits::{DiagServerTrait, ReceiverTrait, SenderTrait};
 
 #[allow(dead_code)]
 fn run_diag_server(_args: Args, running: Arc<AtomicBool>) {
@@ -46,49 +49,65 @@ fn run_diag_server(_args: Args, running: Arc<AtomicBool>) {
 }
 
 fn run_sender(args: Args, running: Arc<AtomicBool>) {
-    info!("Running a sender...");
-
     let sender_params = SenderParams {
         seed: args.seed,
-        port: args.port,
+        addr: args.addr,
         running,
     };
+    info!("Running a sender with {sender_params:#?}");
+
     let mut sender = Sender::new(sender_params);
 
     // Use the desired input (STDIN or the provided file)
     match args.input {
         Some(input_file) => {
             info!("Getting input from the file '{}'...", input_file);
-            let file = match File::open(input_file) {
+            let mut file = match File::open(input_file) {
                 Ok(file) => file,
                 Err(e) => {
                     panic!("Failed to open file: {:?}", e);
                 }
             };
-            sender.run(&file)
+            sender.run(&mut file)
         }
         None => {
             info!("Getting input from STDIN...");
-            sender.run(&std::io::stdin())
+            sender.run(&mut std::io::stdin())
         }
     }
 }
 
-fn run_receiver(_args: Args, _running: Arc<AtomicBool>) {
-    info!("Running a receiver...");
-    // TODO
+fn run_receiver(args: Args, running: Arc<AtomicBool>) {
+    let recv_params = ReceiverParams {
+        addr: args.addr,
+        running,
+    };
+    info!("Running a receiver with {recv_params:#?}");
+
+    let mut receiver = Receiver::new(recv_params);
+
+    // Use the desired input (STDOUT or the provided file)
+    match args.output {
+        Some(output_file) => {
+            info!("Putting output to the file '{}'...", output_file);
+            let mut file = match File::open(output_file) {
+                Ok(file) => file,
+                Err(e) => {
+                    panic!("Failed to open file: {:?}", e);
+                }
+            };
+            receiver.run(&mut file)
+        }
+        None => {
+            info!("Putting output to STDOUT...");
+            receiver.run(&mut std::io::stdout())
+        }
+    }
 }
 
-fn init_application() {
+fn init_application() -> Arc<AtomicBool> {
     // Create the directory for logs
     std::fs::create_dir_all(LOGS_DIR).expect("The logs directory should be created.");
-}
-
-fn main() {
-    if let Err(e) = common::setup_logger() {
-        info!("Unable to initialize the logger!\nERROR: {}", e);
-    }
-    init_application();
 
     // Flag that indicates if the app shoul still run
     let running = Arc::new(AtomicBool::new(true));
@@ -96,10 +115,20 @@ fn main() {
 
     ctrlc::set_handler(move || {
         running_clone.store(false, Ordering::Release);
+        thread::sleep(std::time::Duration::from_millis(100));
+        std::process::exit(0x01);
     })
     .expect("Error setting Ctrl-C handler");
 
+    running
+}
+
+fn main() {
+    if let Err(e) = common::setup_logger() {
+        info!("Unable to initialize the logger!\nERROR: {}", e);
+    }
     let args = Args::parse();
+    let running = init_application();
 
     // Sender mode
     match args.mode {

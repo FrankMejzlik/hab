@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, SocketAddrV4};
+use std::str::FromStr;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -21,7 +22,7 @@ pub enum NetSenderError {}
 
 #[derive(Debug)]
 pub struct NetSenderParams {
-    pub port: u32,
+    pub addr: String,
     pub running: Arc<AtomicBool>,
 }
 
@@ -42,7 +43,7 @@ impl NetSender {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
         // Spawn the task that will accept the receiver heartbeats
-        rt.spawn(Self::registrator_task(params.port, params.running));
+        rt.spawn(Self::registrator_task(params.addr, params.running));
 
         NetSender {
             subscribers: Arc::new(Mutex::new(BTreeMap::new())),
@@ -55,27 +56,27 @@ impl NetSender {
         Ok(())
     }
 
-    async fn registrator_task(port: u32, running: Arc<AtomicBool>) {
-        let addr = SocketAddrV4::new(
-            Ipv4Addr::new(0, 0, 0, 0),
-            port.try_into().expect("Failed to convert to u16!"),
-        );
+    async fn registrator_task(addr: String, running: Arc<AtomicBool>) {
+        let addr = match SocketAddrV4::from_str(&addr) {
+            Ok(x) => x,
+            Err(e) => panic!("Failed to parse the address '{addr}! ERROR: {e}'"),
+        };
         let socket = match UdpSocket::bind(&addr).await {
             Ok(x) => x,
             Err(e) => panic!("Failed to bind to socket! ERROR: {}", e),
         };
-        info!(tag: "registrator", "Accepting heartbeats from receivers...");
+        info!(tag: "registrator_task", "Accepting heartbeats from receivers at {addr}...");
 
         while running.load(Ordering::Acquire) {
             let mut buf = [0; 1024];
             let (recv, peer) = match socket.recv_from(&mut buf).await {
                 Ok(x) => x,
                 Err(e) => {
-                    warn!(tag: "registrator", "Failed to read the datagram! ERROR: {}!", e);
+                    warn!(tag: "registrator_task", "Failed to read the datagram! ERROR: {}!", e);
                     continue;
                 }
             };
-            debug!(tag: "registrator", "Received a heartbeat from '{}': {:?}", peer, &buf[..recv]);
+            debug!(tag: "registrator_task", "Received a heartbeat from '{}': {:?}", peer, &buf[..recv]);
         }
     }
 }

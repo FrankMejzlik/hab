@@ -17,9 +17,10 @@ use crate::traits::{BlockSignerTrait, SenderTrait};
 use crate::{debug, error, info, trace, warn};
 use chrono::Local;
 
+#[derive(Debug)]
 pub struct SenderParams {
     pub seed: u64,
-    pub port: u32,
+    pub addr: String,
     pub running: Arc<AtomicBool>,
 }
 
@@ -36,7 +37,7 @@ impl Sender {
         let signer = BlockSignerInst::new(block_signer_params);
 
         let net_sender_params = NetSenderParams {
-            port: params.port,
+            addr: params.addr.clone(),
             running: params.running.clone(),
         };
         let net_sender = NetSender::new(net_sender_params);
@@ -47,31 +48,37 @@ impl Sender {
             net_sender,
         }
     }
+    // ---
+    #[cfg(feature = "simulate_stdin")]
+    fn read_input(input: &mut dyn Read) -> Vec<u8> {
+        thread::sleep(Duration::from_secs(5));
+        let msg = Local::now().format("%d-%m-%Y %H:%M:%S").to_string();
+        debug!(tag: "sender", "Processing input '{}'...", &msg);
+        msg.into_bytes()
+    }
+    #[cfg(not(feature = "simulate_stdin"))]
+    fn read_input(input: &mut dyn Read) -> Vec<u8> {
+        let mut msg = String::default();
+        input.read_to_string(&mut msg).expect("Fail");
+        debug!(tag: "sender", "Processing input '{}'...", &msg);
+        msg.into_bytes()
+    }
 }
 
 impl SenderTrait for Sender {
-    fn run(&mut self, _input: &dyn Read) {
+    fn run(&mut self, input: &mut dyn Read) {
         // The main loop as long as the app should run
         while self.params.running.load(Ordering::Acquire) {
-            let msg = Local::now()
-                .format("%d-%m-%Y %H:%M:%S")
-                .to_string()
-                .into_bytes();
-            debug!(tag: "sender", "Processing message '{}'...", String::from_utf8_lossy(&msg));
+            let data = Self::read_input(input);
 
-            let signed_data = match self.signer.sign(&msg) {
+            let signed_data = match self.signer.sign(&data) {
                 Ok(x) => x.to_bytes(),
                 Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
             };
 
-            debug!(tag: "sender", "Signed data block size: {}B", size_of_val(&signed_data));
-
-            match self.net_sender.broadcast(&signed_data) {
-                Ok(()) => debug!(tag: "sender", "Signed data block broadcasted."),
-                Err(e) => panic!("Failed to broadcast the data block!\nERROR: {:?}", e),
+            if let Err(e) = self.net_sender.broadcast(&signed_data) {
+                panic!("Failed to broadcast the data block!\nERROR: {:?}", e);
             };
-
-            thread::sleep(Duration::from_secs(3));
         }
     }
 }

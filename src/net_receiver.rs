@@ -13,6 +13,7 @@ use std::{
 // ---
 use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
+use tokio::time::{sleep, Duration};
 // ---
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
@@ -32,6 +33,7 @@ pub struct NetReceiverParams {
 #[allow(dead_code)]
 pub struct NetReceiver {
     rt: Runtime,
+    socket: UdpSocket,
 }
 
 impl NetReceiver {
@@ -39,31 +41,30 @@ impl NetReceiver {
     pub fn new(params: NetReceiverParams) -> Self {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
-        // Spawn the task that will accept the receiver heartbeats
-        rt.spawn(Self::lookup_task(params.addr, params.running));
+        // Bind on some available port
+        let socket = match rt.block_on(UdpSocket::bind("0.0.0.0:0")) {
+            Ok(x) => x,
+            Err(e) => panic!("Failed to bind to the receiver socket! ERROR: {}", e),
+        };
+        info!(tag: "receiver", "The receiver thread is bound at '{}'...", socket.local_addr().unwrap());
 
-        NetReceiver { rt }
+        // Spawn the task that will send periodic hearbeats to the sender
+        rt.spawn(Self::heartbeat_task(params.addr, params.running));
+
+        NetReceiver { rt, socket }
     }
 
-    async fn lookup_task(addr: String, running: Arc<AtomicBool>) {
-        let addr = SocketAddrV4::from_str(&addr).expect("Failed to parse the address!");
-
-        let socket = match UdpSocket::bind(addr).await {
+    async fn heartbeat_task(addr: String, running: Arc<AtomicBool>) {
+        let addr = match SocketAddrV4::from_str(&addr) {
             Ok(x) => x,
-            Err(e) => panic!("Failed to bind to socket! ERROR: {}", e),
+            Err(e) => panic!("Failed to parse the address '{addr}! ERROR: {e}'"),
         };
-        info!(tag: "registrator", "Accepting heartbeats from receivers...");
+        info!(tag: "heartbeat_task", "Subscribing to the sender at '{addr}'....");
 
+        // The task loop
         while running.load(Ordering::Acquire) {
-            let mut buf = [0; 1024];
-            let (recv, peer) = match socket.recv_from(&mut buf).await {
-                Ok(x) => x,
-                Err(e) => {
-                    warn!(tag: "registrator", "Failed to read the datagram! ERROR: {}!", e);
-                    continue;
-                }
-            };
-            debug!(tag: "registrator", "Received a heartbeat from '{}': {:?}", peer, &buf[..recv]);
+            debug!(tag: "heartbeat_task", "Sending a heartbeat to the sender at '{addr}'...");
+            sleep(Duration::from_secs(5)).await;
         }
     }
 }

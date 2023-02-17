@@ -19,7 +19,7 @@
 					"kind": "bin"
 				}
 			},
-			"args": ["sender"],
+			"args": ["sender", "0.0.0.0:5555"],
 			"cwd": "${workspaceFolder}"
 		},
 		{
@@ -55,7 +55,7 @@
 					"kind": "bin"
 				}
 			},
-			"args": ["receiver"],
+			"args": ["receiver", "127.0.0.1:5555"],
 			"cwd": "${workspaceFolder}"
 		},
 		{
