@@ -12,7 +12,8 @@ use crate::block_signer::BlockSigner;
 /// A directory where the identity files lie (e.g. `BlockSigner` with secret & public keys).
 pub const ID_DIR: &str = ".identity/";
 /// A name of the file where the state of `BlockSigner` is serialized.
-pub const BLOCK_SIGNER_FILENAME: &str = "block_signer.bin";
+pub const ID_FILENAME: &str = "id.bin";
+pub const ID_CHECK_FILENAME: &str = "id.txt";
 
 pub const LOGS_DIR: &str = "logs/";
 pub const INPUT_DBG_DIR: &str = "logs/input/";

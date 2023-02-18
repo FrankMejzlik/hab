@@ -61,7 +61,7 @@ impl<const T: usize, const N: usize> Display for KeyPair<HorstSecretKey<T, N>, H
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HorstSecretKey<const T: usize, const TREE_HASH_SIZE: usize> {
     data: Vec<Vec<u8>>,
     tree: Box<MerkleTree<TREE_HASH_SIZE>>,
@@ -104,7 +104,7 @@ impl<const T: usize, const N: usize> Display for HorstSecretKey<T, N> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HorstPublicKey<const N: usize> {
     pub data: Vec<u8>,
 }

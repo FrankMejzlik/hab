@@ -10,7 +10,7 @@ use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 // ---
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MerkleTree<const BLOCK_SIZE: usize> {
     data: Vec<Vec<u8>>,
     t: usize,

@@ -2,8 +2,8 @@
 //! The main module providing high-level API for the sender of the data.
 //!
 
-use slice_of_array::SliceFlatExt;
-use std::io::Read;
+use std::fs::File;
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,6 +13,7 @@ use crate::block_signer::BlockSignerParams;
 use chrono::Local;
 use xxhash_rust::xxh3::xxh3_64;
 // ---
+use crate::config;
 use crate::config::BlockSignerInst;
 use crate::net_sender::{NetSender, NetSenderParams};
 use crate::traits::{BlockSignerTrait, SenderTrait};
@@ -100,17 +101,6 @@ impl SenderTrait for Sender {
                 }
                 Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
             };
-			use rand_core::SeedableRng;
-			use rand_chacha::{ChaCha20Rng };
-
-			let seed = [
-				1, 0, 52, 0, 0, 0, 0, 0, 1, 0, 10, 0, 22, 32, 0, 0, 2, 0, 55, 49, 0, 11, 0, 0, 3, 0, 0, 0, 0,
-				0, 2, 92,
-			];
-			let mut rng1 = ChaCha20Rng::from_seed(seed);
-
-			//let x = bincode::serialize(&self.signer);
-			
 
             // Debug log the input signed block
             let hash = xxh3_64(&signed_data);

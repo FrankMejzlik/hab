@@ -5,6 +5,9 @@
 use std::marker::PhantomData;
 // ---
 use bincode::{deserialize, serialize};
+use byteorder::LittleEndian;
+use byteorder::ReadBytesExt;
+use byteorder::WriteBytesExt;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use rand_core::{CryptoRng, RngCore, SeedableRng};
@@ -13,21 +16,24 @@ use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
 use slice_of_array::SliceFlatExt;
+use std::fs::{create_dir_all, File};
+use std::io::{Read, Write};
 use xxhash_rust::xxh3::xxh3_64;
 // ---
 use crate::common::Error;
+use crate::config;
+use crate::horst::HorstPublicKey;
 pub use crate::horst::{
     HorstKeypair, HorstPublicKey as PublicKey, HorstSecretKey as SecretKey, HorstSigScheme,
     HorstSignature as Signature,
 };
 use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait};
 use crate::utils::UnixTimestamp;
-use crate::horst::HorstPublicKey;
 
 ///
 /// Wrapper for one key.
 ///
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct KeyCont<const T: usize, const N: usize> {
     key: HorstKeypair<T, N>,
     #[allow(dead_code)]
@@ -51,7 +57,7 @@ pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize> {
     pub pub_keys: Vec<PublicKey>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Debug, Deserialize, PartialEq)]
 struct KeyLayers<const T: usize, const N: usize> {
     data: Vec<Vec<KeyCont<T, N>>>,
 }
@@ -75,18 +81,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
     }
 }
 
-
-#[derive(Serialize, Deserialize)]
-struct SerializableBlockSigner<
-const T: usize,
-const TREE_HASH_SIZE: usize,
-CsPrng: CryptoRng + SeedableRng + RngCore
-> {
-    rng: CsPrng,
-    layers: KeyLayers<T, TREE_HASH_SIZE>,
-    pks: Vec<HorstPublicKey<TREE_HASH_SIZE>>,
-}
-
+#[derive(Debug)]
 pub struct BlockSigner<
     const K: usize,
     const TAU: usize,
@@ -94,7 +89,7 @@ pub struct BlockSigner<
     const T: usize,
     const MSG_HASH_SIZE: usize,
     const TREE_HASH_SIZE: usize,
-    CsPrng: CryptoRng + SeedableRng + RngCore,
+    CsPrng: CryptoRng + SeedableRng<Seed = [u8; 32]> + RngCore + Clone,
     MsgHashFn: Digest,
     TreeHashFn: Digest,
 > {
@@ -110,12 +105,106 @@ impl<
         const T: usize,
         const MSG_HASH_SIZE: usize,
         const TREE_HASH_SIZE: usize,
-        CsPrng: CryptoRng + SeedableRng + RngCore,
+        CsPrng: CryptoRng + SeedableRng<Seed = [u8; 32]> + RngCore + Clone,
         MsgHashFn: Digest,
         TreeHashFn: Digest,
     >
     BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
+    fn store_state(&mut self) {
+        create_dir_all(config::ID_DIR).expect("!");
+        let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
+        {
+            let mut file = File::create(filepath).expect("The file should be writable!");
+
+            let mut state = [0u8; 32];
+            self.rng.fill_bytes(&mut state);
+
+            let layers_bytes = bincode::serialize(&self.layers).expect("!");
+            let pks_bytes = bincode::serialize(&self.pks).expect("!");
+
+            file.write_u64::<LittleEndian>(state.len() as u64)
+                .expect("!");
+            file.write_u64::<LittleEndian>(layers_bytes.len() as u64)
+                .expect("!");
+            file.write_u64::<LittleEndian>(pks_bytes.len() as u64)
+                .expect("!");
+            file.write_all(&state)
+                .expect("Failed to write state to file");
+            file.write_all(&layers_bytes)
+                .expect("Failed to write state to file");
+            file.write_all(&pks_bytes)
+                .expect("Failed to write state to file");
+        }
+
+        // Check
+        {
+            let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
+            let mut file = File::open(filepath).expect("!");
+
+            let _rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+            let layers_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+            let pks_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+
+            let mut state = [0u8; 32];
+            file.read_exact(&mut state)
+                .expect("Failed to read state from file");
+
+            let mut layers_bytes = vec![0u8; layers_len];
+            file.read_exact(&mut layers_bytes)
+                .expect("Failed to read state from file");
+
+            let mut pks_bytes = vec![0u8; pks_len];
+            file.read_exact(&mut pks_bytes)
+                .expect("Failed to read state from file");
+
+            let layers =
+                bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
+            let pks =
+                bincode::deserialize::<Vec<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
+                    .expect("!");
+
+            assert_eq!(self.layers, layers);
+            assert_eq!(self.pks, pks);
+            debug!("ID store check OK.");
+        }
+    }
+
+    fn load_state(&mut self) -> bool {
+        let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
+        debug!("Trying to load the state from '{filepath}'...");
+        let mut file = match File::open(filepath) {
+            Ok(x) => x,
+            Err(_) => return false,
+        };
+
+        let _rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+        let layers_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+        let pks_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+
+        let mut state = [0u8; 32];
+        file.read_exact(&mut state)
+            .expect("Failed to read state from file");
+
+        let mut layers_bytes = vec![0u8; layers_len];
+        file.read_exact(&mut layers_bytes)
+            .expect("Failed to read state from file");
+
+        let mut pks_bytes = vec![0u8; pks_len];
+        file.read_exact(&mut pks_bytes)
+            .expect("Failed to read state from file");
+
+        let layers =
+            bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
+        let pks = bincode::deserialize::<Vec<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
+            .expect("!");
+
+        self.rng = CsPrng::from_seed(state);
+        self.layers = layers;
+        self.pks = pks;
+        true
+    }
+
     fn next_key(
         &mut self,
     ) -> (
@@ -140,7 +229,7 @@ impl<
         const T: usize,
         const MSG_HASH_SIZE: usize,
         const TREE_HASH_SIZE: usize,
-        CsPrng: CryptoRng + SeedableRng + RngCore,
+        CsPrng: CryptoRng + SeedableRng<Seed = [u8; 32]> + RngCore + Clone,
         MsgHashFn: Digest,
         TreeHash: Digest,
     > BlockSignerTrait
@@ -174,11 +263,17 @@ impl<
 
         layers.insert(0, keypair);
 
-        BlockSigner {
+        let mut new_inst = BlockSigner {
             rng,
             layers,
             pks: vec![],
-        }
+        };
+
+        match Self::load_state(&mut new_inst) {
+            true => info!("The existing ID was loaded."),
+            false => info!("No existing ID found, creating a new one."),
+        };
+        new_inst
     }
 
     fn sign(&mut self, data: &[u8]) -> Result<Self::SignedBlock, Error> {
@@ -193,6 +288,8 @@ impl<
             &self.layers.data[0][0].key.public
         ));
         // --- sanity check ---
+
+        self.store_state();
 
         Ok(SignedBlock {
             data: data.to_vec(),
@@ -209,7 +306,7 @@ impl<
         const T: usize,
         const MSG_HASH_SIZE: usize,
         const TREE_HASH_SIZE: usize,
-        CsPrng: CryptoRng + SeedableRng + RngCore,
+        CsPrng: CryptoRng + SeedableRng<Seed = [u8; 32]> + RngCore + Clone,
         MsgHashFn: Digest,
         TreeHash: Digest,
     > BlockVerifierTrait
@@ -269,9 +366,12 @@ impl<
         let hash_pks = tmp;
         let hash_sign = tmp2;
 
-        match Self::Signer::verify(&block.data, &block.signature, &block.pub_keys[0]) {
+        let res = match Self::Signer::verify(&block.data, &block.signature, &block.pub_keys[0]) {
             true => Ok((block.data, hash_sign, hash_pks)),
             false => Err(Error::new("Unable to verify the signature!")),
-        }
+        };
+        self.store_state();
+
+        res
     }
 }

@@ -142,7 +142,7 @@ pub trait DiagServerTrait {
     fn send_state(&mut self, data: &str) -> Result<(), Self::Error>;
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct KeyPair<GSecretKey, GPublicKey> {
     pub secret: GSecretKey,
     pub public: GPublicKey,
