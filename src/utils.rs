@@ -45,12 +45,12 @@ pub fn from_hex(hex_bytes: &str) -> Result<Vec<u8>, String> {
 }
 
 #[allow(dead_code)]
-pub fn gen_byte_blocks_from<const BLOCK_SIZE: usize>(cont: &[u64]) -> Vec<[u8; BLOCK_SIZE]> {
+pub fn gen_byte_blocks_from<const BLOCK_SIZE: usize>(cont: &[u64]) -> Vec<Vec<u8>> {
     let mut result = vec![];
     for item in cont.iter() {
         let bs = item.to_le_bytes();
 
-        let mut arr = [0x0; BLOCK_SIZE];
+        let mut arr = vec![0x0; BLOCK_SIZE];
 
         debug!("PRE: arr: {}", to_hex(&arr));
         arr[0..std::mem::size_of::<u64>()].copy_from_slice(&bs);
@@ -150,7 +150,7 @@ mod tests {
         debug!("numbers: {:?}", numbers);
         let leaf_numbers = utils::gen_byte_blocks_from::<BLOCK_SIZE>(&numbers);
         for (ex_num, num) in leaf_numbers.into_iter().enumerate() {
-            let mut cursor = Cursor::new(num);
+            let mut cursor = Cursor::new(num.clone());
             let num_0 = cursor.read_u64::<NativeEndian>().unwrap();
             let num_1 = cursor.read_u64::<NativeEndian>().unwrap();
             let num_2 = cursor.read_u64::<NativeEndian>().unwrap();

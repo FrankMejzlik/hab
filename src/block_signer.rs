@@ -26,7 +26,7 @@ use crate::utils::UnixTimestamp;
 ///
 /// Wrapper for one key.
 ///
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct KeyCont<const T: usize, const N: usize> {
     key: HorstKeypair<T, N>,
     #[allow(dead_code)]
@@ -50,6 +50,7 @@ pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize> {
     pub pub_keys: Vec<PublicKey>,
 }
 
+#[derive(Serialize, Deserialize)]
 struct KeyLayers<const T: usize, const N: usize> {
     data: Vec<Vec<KeyCont<T, N>>>,
 }
@@ -73,6 +74,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct BlockSigner<
     const K: usize,
     const TAU: usize,
@@ -87,6 +89,7 @@ pub struct BlockSigner<
     #[allow(dead_code)]
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
+    pks: Vec<<Self as BlockSignerTrait>::PublicKey>,
     // ---
     // To determine the type variance: https://stackoverflow.com/a/65960918
     _p: PhantomData<(MsgHashFn, TreeHashFn)>,
@@ -166,6 +169,7 @@ impl<
         BlockSigner {
             rng,
             layers,
+            pks: vec![],
             _p: PhantomData,
         }
     }
@@ -235,6 +239,7 @@ impl<
         BlockSigner {
             rng,
             layers,
+            pks: vec![],
             _p: PhantomData,
         }
     }

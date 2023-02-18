@@ -6,6 +6,7 @@ use std::error::Error as ErrorTrait;
 use std::io::{Read, Write};
 // ---
 use rand_core::{CryptoRng, RngCore, SeedableRng};
+use serde::{Deserialize, Serialize};
 use sha3::Digest;
 
 ///
@@ -141,7 +142,7 @@ pub trait DiagServerTrait {
     fn send_state(&mut self, data: &str) -> Result<(), Self::Error>;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct KeyPair<GSecretKey, GPublicKey> {
     pub secret: GSecretKey,
     pub public: GPublicKey,

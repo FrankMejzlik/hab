@@ -124,10 +124,10 @@ pub struct Args {
     /// Seed used for the CSPRNG.
     #[clap(short, long, default_value_t = 42)]
     pub seed: u64,
-    /// The input file (if none, STDIN), only aplicable with `Sender`.
+    /// The input source file (if none, STDIN for sender, network for receiver)
     #[clap(short, long)]
     pub input: Option<String>,
-    /// The input file (if none, STDOUT), only aplicable with `Receiver`.
+    /// The output source file (if none, STDOUT for receiver, network for sender)
     #[clap(short, long)]
     pub output: Option<String>,
 }

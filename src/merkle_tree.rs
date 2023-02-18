@@ -7,18 +7,19 @@ use std::fmt::{Display, Formatter, Result};
 // ---
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use serde::{Deserialize, Serialize};
 // ---
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MerkleTree<const BLOCK_SIZE: usize> {
-    data: Vec<[u8; BLOCK_SIZE]>,
+    data: Vec<Vec<u8>>,
     t: usize,
     h: usize,
     size: usize,
 }
 
 impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
-    pub fn new<Hash: Digest>(leaves: Vec<[u8; BLOCK_SIZE]>) -> Self {
+    pub fn new<Hash: Digest>(leaves: Vec<Vec<u8>>) -> Self {
         let t = leaves.len();
         let h = (t as f32).log2();
 
@@ -34,7 +35,7 @@ impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
         assert!(h <= std::u32::MAX as usize);
 
         let size = 2_usize.pow(h as u32) - 1;
-        let mut data = vec![[0u8; BLOCK_SIZE]; size];
+        let mut data = vec![vec![0u8; BLOCK_SIZE]; size];
 
         let base = 2_usize.pow((h - 1) as u32) - 1;
 
@@ -52,8 +53,8 @@ impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
             let base = 2_usize.pow(l) - 1;
             for i in 0_usize..num_idxs {
                 let mut hasher = Hash::new();
-                hasher.update(t.data[base_prev + 2 * i]);
-                hasher.update(t.data[base_prev + 2 * i + 1]);
+                hasher.update(t.data[base_prev + 2 * i].clone());
+                hasher.update(t.data[base_prev + 2 * i + 1].clone());
                 let r = hasher.finalize();
 
                 t.data[base + i].copy_from_slice(&r[..BLOCK_SIZE]);
@@ -65,7 +66,10 @@ impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
 
     pub fn get(&self, layer: u32, idx: usize) -> &[u8; BLOCK_SIZE] {
         let i = (2_usize.pow(layer) - 1) + idx;
-        &self.data[i]
+        self.data[i]
+            .as_slice()
+            .try_into()
+            .expect("The size should be `BLOCK_SIZE`!")
     }
 
     pub fn root(&self) -> &[u8; BLOCK_SIZE] {
@@ -152,14 +156,14 @@ mod tests {
         //
         let tree = MerkleTree::new::<Sha3_256>(leaf_numbers);
 
-        let ap_0 = tree.get_auth_path(0);
-        let ap_1 = tree.get_auth_path(1);
-        let ap_2 = tree.get_auth_path(2);
-        let ap_3 = tree.get_auth_path(3);
-        let ap_4 = tree.get_auth_path(4);
-        let ap_5 = tree.get_auth_path(5);
-        let ap_6 = tree.get_auth_path(6);
-        let ap_7 = tree.get_auth_path(7);
+        let ap_0: Vec<[u8; BLOCK_SIZE]> = tree.get_auth_path(0);
+        let ap_1: Vec<[u8; BLOCK_SIZE]> = tree.get_auth_path(1);
+        let ap_2: Vec<[u8; BLOCK_SIZE]> = tree.get_auth_path(2);
+        let ap_3: Vec<[u8; BLOCK_SIZE]> = tree.get_auth_path(3);
+        let ap_4: Vec<[u8; BLOCK_SIZE]> = tree.get_auth_path(4);
+        let ap_5: Vec<[u8; BLOCK_SIZE]> = tree.get_auth_path(5);
+        let ap_6: Vec<[u8; BLOCK_SIZE]> = tree.get_auth_path(6);
+        let ap_7: Vec<[u8; BLOCK_SIZE]> = tree.get_auth_path(7);
 
         let total_ap_len = ap_0.len()
             + ap_1.len()
@@ -326,6 +330,10 @@ mod tests {
             .into_iter()
             .map(|i| Sha3_256::digest(i).try_into().unwrap())
             .collect();
+        let leaves = leaves
+            .into_iter()
+            .map(|x| x.into())
+            .collect::<Vec<Vec<u8>>>();
         for l in leaves.iter() {
             print!("{}", utils::to_hex(l));
         }
@@ -335,7 +343,7 @@ mod tests {
         //
         let tree = MerkleTree::new::<Sha3_256>(leaves);
 
-        let ap_0 = tree.get_auth_path(0);
+        let ap_0: Vec<[u8; BLOCK_SIZE]> = tree.get_auth_path(0);
 
         let total_ap_len = ap_0.len();
         //
@@ -359,6 +367,10 @@ mod tests {
             .into_iter()
             .map(|i| Sha3_256::digest(i).try_into().unwrap())
             .collect();
+        let leaves = leaves
+            .into_iter()
+            .map(|x| x.into())
+            .collect::<Vec<Vec<u8>>>();
         for l in leaves.iter() {
             print!("{}", utils::to_hex(l));
         }
@@ -368,7 +380,7 @@ mod tests {
         //
         let tree = MerkleTree::new::<Sha3_256>(leaves);
 
-        let _ap_0 = tree.get_auth_path(0); //< Should panic
+        let _ap_0: Vec<[u8; BLOCK_SIZE]> = tree.get_auth_path(0); //< Should panic
     }
 
     #[test]
@@ -382,11 +394,15 @@ mod tests {
             .into_iter()
             .map(|i| Sha3_256::digest(i).try_into().unwrap())
             .collect();
+        let leaves = leaves
+            .into_iter()
+            .map(|x| x.into())
+            .collect::<Vec<Vec<u8>>>();
         for l in leaves.iter() {
             print!("{}", utils::to_hex(l));
         }
 
-        let tree = MerkleTree::new::<Sha3_256>(leaves);
+        let tree: MerkleTree<BLOCK_SIZE> = MerkleTree::new::<Sha3_256>(leaves);
         debug!("{}", tree);
     }
 
@@ -445,7 +461,7 @@ mod tests {
         //
 
         // Build the tree
-        let act_tree = MerkleTree::new::<Sha3_256>(leaf_numbers);
+        let act_tree: MerkleTree<BLOCK_SIZE> = MerkleTree::new::<Sha3_256>(leaf_numbers);
 
         //
         // Assert
@@ -470,7 +486,7 @@ mod tests {
             utils::gen_byte_blocks_from::<BLOCK_SIZE>(&(0_u64..T as u64).collect::<Vec<u64>>());
 
         // Build the tree
-        let act_tree = MerkleTree::new::<Sha3_256>(leaf_numbers);
+        let act_tree: MerkleTree<BLOCK_SIZE> = MerkleTree::new::<Sha3_256>(leaf_numbers);
         println!("{}", utils::to_hex(act_tree.root()));
 
         assert_eq!(

@@ -61,15 +61,15 @@ impl<const T: usize, const N: usize> Display for KeyPair<HorstSecretKey<T, N>, H
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HorstSecretKey<const T: usize, const TREE_HASH_SIZE: usize> {
-    data: Box<[[u8; TREE_HASH_SIZE]; T]>,
+    data: Vec<Vec<u8>>,
     tree: Box<MerkleTree<TREE_HASH_SIZE>>,
 }
 impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SIZE> {
     fn new<TreeHash: Digest, CsPrng: CryptoRng + SeedableRng + RngCore>(rng: &mut CsPrng) -> Self {
         // Allocate the memory
-        let mut data = box_array![[0u8; TREE_HASH_SIZE]; T];
+        let mut data = vec![vec![0u8; TREE_HASH_SIZE]; T];
 
         // Generate the key
         for block in data.iter_mut() {
@@ -78,21 +78,24 @@ impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SI
         }
 
         // Pregenerate the tree
-        let tree = Box::new(MerkleTree::new::<TreeHash>(data.to_vec()));
+        let tree = Box::new(MerkleTree::new::<TreeHash>(data.clone()));
 
         HorstSecretKey { data, tree }
     }
 
     fn get(&self, idx: usize) -> [u8; TREE_HASH_SIZE] {
         self.data[idx]
+            .as_slice()
+            .try_into()
+            .expect("The size should be `TREE_HASH_SIZE`!")
     }
 }
 
 impl<const T: usize, const N: usize> Display for HorstSecretKey<T, N> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         writeln!(f, "<<< HorstSecretKey >>>")?;
-        writeln!(f, "\t[{:0>5}]: {}", 0, encode(self.data[0]))?;
-        writeln!(f, "\t[{:0>5}]: {}", 1, encode(self.data[1]))?;
+        writeln!(f, "\t[{:0>5}]: {}", 0, encode(self.data[0].clone()))?;
+        writeln!(f, "\t[{:0>5}]: {}", 1, encode(self.data[1].clone()))?;
         writeln!(f, "\t...")?;
         writeln!(f, "\t[{:0>5}]: {}", T - 2, utils::to_hex(&self.data[T - 2]))?;
         writeln!(f, "\t[{:0>5}]: {}", T - 1, utils::to_hex(&self.data[T - 1]))?;
