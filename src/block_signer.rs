@@ -22,6 +22,7 @@ pub use crate::horst::{
 };
 use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait};
 use crate::utils::UnixTimestamp;
+use crate::horst::HorstPublicKey;
 
 ///
 /// Wrapper for one key.
@@ -74,7 +75,18 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
     }
 }
 
+
 #[derive(Serialize, Deserialize)]
+struct SerializableBlockSigner<
+const T: usize,
+const TREE_HASH_SIZE: usize,
+CsPrng: CryptoRng + SeedableRng + RngCore
+> {
+    rng: CsPrng,
+    layers: KeyLayers<T, TREE_HASH_SIZE>,
+    pks: Vec<HorstPublicKey<TREE_HASH_SIZE>>,
+}
+
 pub struct BlockSigner<
     const K: usize,
     const TAU: usize,
@@ -86,13 +98,9 @@ pub struct BlockSigner<
     MsgHashFn: Digest,
     TreeHashFn: Digest,
 > {
-    #[allow(dead_code)]
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
     pks: Vec<<Self as BlockSignerTrait>::PublicKey>,
-    // ---
-    // To determine the type variance: https://stackoverflow.com/a/65960918
-    _p: PhantomData<(MsgHashFn, TreeHashFn)>,
 }
 
 impl<
@@ -170,7 +178,6 @@ impl<
             rng,
             layers,
             pks: vec![],
-            _p: PhantomData,
         }
     }
 
@@ -240,7 +247,6 @@ impl<
             rng,
             layers,
             pks: vec![],
-            _p: PhantomData,
         }
     }
 

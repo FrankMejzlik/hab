@@ -9,6 +9,11 @@ use sha3::{Sha3_256, Sha3_512};
 // ---
 use crate::block_signer::BlockSigner;
 
+/// A directory where the identity files lie (e.g. `BlockSigner` with secret & public keys).
+pub const ID_DIR: &str = ".identity/";
+/// A name of the file where the state of `BlockSigner` is serialized.
+pub const BLOCK_SIGNER_FILENAME: &str = "block_signer.bin";
+
 pub const LOGS_DIR: &str = "logs/";
 pub const INPUT_DBG_DIR: &str = "logs/input/";
 pub const OUTPUT_DBG_DIR: &str = "logs/output/";

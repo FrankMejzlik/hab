@@ -100,6 +100,17 @@ impl SenderTrait for Sender {
                 }
                 Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
             };
+			use rand_core::SeedableRng;
+			use rand_chacha::{ChaCha20Rng };
+
+			let seed = [
+				1, 0, 52, 0, 0, 0, 0, 0, 1, 0, 10, 0, 22, 32, 0, 0, 2, 0, 55, 49, 0, 11, 0, 0, 3, 0, 0, 0, 0,
+				0, 2, 92,
+			];
+			let mut rng1 = ChaCha20Rng::from_seed(seed);
+
+			//let x = bincode::serialize(&self.signer);
+			
 
             // Debug log the input signed block
             let hash = xxh3_64(&signed_data);

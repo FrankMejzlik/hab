@@ -26,24 +26,24 @@ use clap::Parser;
 use ctrlc;
 // ---
 use crate::common::{Args, ProgramMode};
-use crate::diag_server::DiagServer;
+//use crate::diag_server::DiagServer;
 use crate::receiver::{Receiver, ReceiverParams};
 use crate::sender::{Sender, SenderParams};
 use crate::traits::{DiagServerTrait, ReceiverTrait, SenderTrait};
 
 #[allow(dead_code)]
 fn run_diag_server(_args: Args, running: Arc<AtomicBool>) {
-    info!("Running a diag server...");
+    // info!("Running a diag server...");
 
-    let mut diag_server = DiagServer::new("127.0.0.1:9000".parse().unwrap());
+    // let mut diag_server = DiagServer::new("127.0.0.1:9000".parse().unwrap());
 
-    while running.load(Ordering::Acquire) {
-        let msg = format!("{}", utils::unix_ts());
-        diag_server
-            .send_state(&msg)
-            .expect("Failed to send the message!");
-        thread::sleep(std::time::Duration::from_secs(1));
-    }
+    // while running.load(Ordering::Acquire) {
+    //     let msg = format!("{}", utils::unix_ts());
+    //     diag_server
+    //         .send_state(&msg)
+    //         .expect("Failed to send the message!");
+    //     thread::sleep(std::time::Duration::from_secs(1));
+    // }
 }
 
 fn run_sender(args: Args, running: Arc<AtomicBool>) {
