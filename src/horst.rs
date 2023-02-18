@@ -129,6 +129,7 @@ pub struct HorstSignature<const N: usize, const K: usize, const TAUPLUS: usize> 
 }
 impl<const N: usize, const K: usize, const TAUPLUS: usize> HorstSignature<N, K, TAUPLUS> {
     pub fn new(data: [[[u8; N]; TAUPLUS]; K]) -> Self {
+        // TODO: Reimplement using e.g. `ndarray` crate
         let mut vec = vec![];
         vec.reserve(K);
 

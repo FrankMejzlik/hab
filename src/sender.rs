@@ -86,13 +86,13 @@ impl SenderTrait for Sender {
                     for x in &x.signature.data {
                         for y in x {
                             let h = xxh3_64(&y);
-                            tmp2 = tmp2 | h;
+                            tmp2 = tmp2 ^ h;
                         }
                     }
 
                     let mut tmp = 0;
                     for pk in x.pub_keys.iter() {
-                        tmp = tmp + xxh3_64(pk.data.as_ref());
+                        tmp = tmp ^ xxh3_64(pk.data.as_ref());
                     }
                     hash_pks = tmp;
                     hash_sign = tmp2;

@@ -111,7 +111,11 @@ impl<
         &SecretKey<T, TREE_HASH_SIZE>,
         Vec<PublicKey<TREE_HASH_SIZE>>,
     ) {
-        let pks = vec![PublicKey::new(&[0_u8; TREE_HASH_SIZE])];
+        // TODO: Implement
+        let pks = vec![
+            self.layers.data[0][0].key.public.clone(),
+            PublicKey::new(&[0_u8; TREE_HASH_SIZE]),
+        ];
 
         // TODO: Implement
         (&self.layers.data[0][0].key.secret, pks)
@@ -243,17 +247,20 @@ impl<
         for x in &block.signature.data {
             for y in x {
                 let h = xxh3_64(&y);
-                tmp2 = tmp2 | h;
+                tmp2 = tmp2 ^ h;
             }
         }
 
         let mut tmp = 0;
         for pk in block.pub_keys.iter() {
-            tmp = tmp + xxh3_64(pk.data.as_ref());
+            tmp = tmp ^ xxh3_64(pk.data.as_ref());
         }
         let hash_pks = tmp;
         let hash_sign = tmp2;
 
-        Ok((block.data, hash_sign, hash_pks))
+        match Self::Signer::verify(&block.data, &block.signature, &block.pub_keys[0]) {
+            true => Ok((block.data, hash_sign, hash_pks)),
+            false => Err(Error::new("Unable to verify the signature!")),
+        }
     }
 }
