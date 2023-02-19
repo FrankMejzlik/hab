@@ -19,13 +19,17 @@ Run sender & receiver in different terminal windows.
 ./scripts/run-receiver.sh
 ```
 
-### Running without network via files
+### Running without a network via files only
+
+You use `sender` mode to sign the message from file and make it output it back to some file.
+Then you can verify the output with `receiver` mode and, if the signature is valid, output the original message to the file.
+
 ```sh
 # Sign the message in `./env/data.input` and store the signed block to `./env/data.signed`
 ./target/debug/hashsig sender "0.0.0.0:5555" --input ./env/data.input --output ./env/data.signed
 
 # Verify the signed block  in `./env/data.signed` and if valid write it to `./env/data.output`
-./target/debug/hashsig receiver "0.0.0.0:5555" --input ./env/data.signed --output ./env/data.output
+./target/debug/hashsig receiver "127.0.0.1:5555" --input ./env/data.signed --output ./env/data.output
 ```
 
 ## Monitor

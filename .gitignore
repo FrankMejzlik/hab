@@ -1,5 +1,6 @@
 /target
 *.log
+.identity/
 logs/*
 !logs/.phony
 env/*

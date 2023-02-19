@@ -185,7 +185,6 @@ impl<
         let mut file = match File::open(&filepath) {
             Ok(x) => x,
             Err(_) => {
-                info!("No existing ID found.");
                 return false;
             }
         };
