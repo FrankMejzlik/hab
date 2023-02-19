@@ -62,4 +62,6 @@ tail -f ./env/receiver/logs/heartbeat_task.log
 tail -f ./env/receiver/logs/received.log
 # The inner state of fragmented block receiver
 tail -f ./env/receiver/logs/fragmented_blocks.log
+# The state of the public keys in the keystore
+tail -f ./env/receiver/logs/block_verifier.log
 ```

@@ -5,6 +5,7 @@
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::{fmt, num};
 // ---
 use crate::block_signer::BlockSignerParams;
 use crate::config::BlockVerifierInst;

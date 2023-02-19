@@ -2,14 +2,15 @@
 //! Module for broadcasting the signed data packets.
 //!
 
+use std::hash::Hash;
 use std::marker::PhantomData;
 // ---
 use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use core::fmt::Debug;
-#[allow(unused_imports)]
-use log::{debug, error, info, trace, warn};
+use std::collections::HashSet;
+
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::de::Deserializer;
 use serde::ser::{SerializeStruct, Serializer};
@@ -29,6 +30,9 @@ pub use crate::horst::{
 };
 use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait};
 use crate::utils::UnixTimestamp;
+#[allow(unused_imports)]
+use crate::{debug, error, info, trace, warn};
+use std::{fmt, num};
 
 ///
 /// Wrapper for one key.
@@ -95,7 +99,7 @@ pub struct BlockSigner<
 > {
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
-    pks: Vec<<Self as BlockSignerTrait>::PublicKey>,
+    pks: HashSet<<Self as BlockSignerTrait>::PublicKey>,
     _x: PhantomData<(MsgHashFn, TreeHashFn)>,
 }
 
@@ -112,6 +116,15 @@ impl<
     >
     BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
+	fn dump_pks(&self) -> String {
+		let mut res = String::new();
+		res.push_str("=== RECEIVER: Public keys ===\n");
+		for pk in self.pks.iter() {
+			res.push_str(&format!("\t{}", pk));
+		}
+		res
+    }
+
     fn store_state(&mut self) {
         create_dir_all(config::ID_DIR).expect("!");
         let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
@@ -163,12 +176,12 @@ impl<
             file.read_exact(&mut pks_bytes)
                 .expect("Failed to read state from file");
 
-            let mut rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
+            let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
 
             let layers =
                 bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
             let pks =
-                bincode::deserialize::<Vec<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
+                bincode::deserialize::<HashSet<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
                     .expect("!");
 
             assert_eq!(self.rng, rng);
@@ -206,7 +219,7 @@ impl<
         let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
         let layers =
             bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
-        let pks = bincode::deserialize::<Vec<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
+        let pks = bincode::deserialize::<HashSet<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
             .expect("!");
 
         self.rng = rng;
@@ -287,7 +300,7 @@ impl<
         let mut new_inst = BlockSigner {
             rng,
             layers,
-            pks: vec![],
+            pks: HashSet::new(),
             _x: PhantomData,
         };
 
@@ -375,7 +388,7 @@ impl<
         BlockSigner {
             rng,
             layers,
-            pks: vec![],
+            pks: HashSet::new(),
             _x: PhantomData,
         }
     }
@@ -404,8 +417,15 @@ impl<
             &block.signature,
             &block.pub_keys[config::DUMMY_KEY_IDX],
         );
+
+
+
         self.store_state();
+
+        debug!(tag: "block_verifier", "{}", self.dump_pks());
 
         Ok((block.data, valid, hash_sign, hash_pks))
     }
+
+    
 }
