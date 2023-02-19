@@ -90,7 +90,7 @@ impl Sender {
 }
 
 impl SenderTrait for Sender {
-    fn run(&mut self, input: &mut dyn Read) {
+    fn run(&mut self, input: &mut dyn Read, mut output: Option<impl Write>) {
         // The main loop as long as the app should run
         while self.params.running.load(Ordering::Acquire) {
             let data = Self::read_input(input);
@@ -126,12 +126,18 @@ impl SenderTrait for Sender {
             let hash_whole = xxh3_64(&data) ^ hash_sign ^ hash_pks;
             debug!(tag: "sender", "[{hash_whole}] {}", String::from_utf8_lossy(&data));
 
-            // OUTPUT: network
-            if let Err(e) = self.net_sender.broadcast(&signed_data) {
-                panic!("Failed to broadcast the data block!\nERROR: {:?}", e);
-            };
             // OUTPUT: file
-            // TODO:
+            if let Some(ref mut x) = output {
+                x.write_all(&signed_data).expect("Should be writable!");
+                // When using file, it is one iteration only
+                self.params.running.store(false, Ordering::Release);
+            }
+            // OUTPUT: network
+            else {
+                if let Err(e) = self.net_sender.broadcast(&signed_data) {
+                    panic!("Failed to broadcast the data block!\nERROR: {:?}", e);
+                };
+            }
         }
     }
 }

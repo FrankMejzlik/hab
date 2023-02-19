@@ -2,7 +2,7 @@
 //! The main module providing high-level API for the receiver of the data.
 //!
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 // ---
@@ -50,21 +50,28 @@ impl Receiver {
 }
 
 impl ReceiverTrait for Receiver {
-    fn run(&mut self, output: &mut dyn Write) {
+    fn run(&mut self, output: &mut dyn Write, mut input: Option<impl Read>) {
         // The main loop as long as the app should run
         while self.params.running.load(Ordering::Acquire) {
+            let mut signed_block = vec![];
             // INPUT: file
-            // TODO:
-
+            if let Some(ref mut x) = input {
+                x.read_to_end(&mut signed_block)
+                    .expect("Should be readable!");
+                // When using file, it is one iteration only
+                self.params.running.store(false, Ordering::Release);
+            }
             // INPUT: network
-            // Block until we receive some whole signed block
-            let signed_block = match self.net_receiver.receive() {
-                Ok(x) => x,
-                Err(e) => {
-                    warn!("Error while receiving the signed data block! ERROR: {e}");
-                    continue;
-                }
-            };
+            else {
+                // Block until we receive some whole signed block
+                signed_block = match self.net_receiver.receive() {
+                    Ok(x) => x,
+                    Err(e) => {
+                        warn!("Error while receiving the signed data block! ERROR: {e}");
+                        continue;
+                    }
+                };
+            }
 
             let hash = xxh3_64(&signed_block);
             debug!(tag: "receiver", "Received signed block of {} bytes with hash '{hash}'.", signed_block.len());

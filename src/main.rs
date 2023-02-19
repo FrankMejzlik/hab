@@ -16,6 +16,7 @@ mod traits;
 mod utils;
 
 use std::fs::File;
+use std::io::BufReader;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -56,6 +57,11 @@ fn run_sender(args: Args, running: Arc<AtomicBool>) {
 
     let mut sender = Sender::new(sender_params);
 
+    let output = match args.output {
+        Some(x) => Some(File::create(x).expect("File should be writable!")),
+        None => None,
+    };
+
     // Use the desired input (STDIN or the provided file)
     match args.input {
         Some(input_file) => {
@@ -66,11 +72,11 @@ fn run_sender(args: Args, running: Arc<AtomicBool>) {
                     panic!("Failed to open file: {:?}", e);
                 }
             };
-            sender.run(&mut file)
+            sender.run(&mut file, output)
         }
         None => {
             info!("Getting input from STDIN...");
-            sender.run(&mut std::io::stdin())
+            sender.run(&mut std::io::stdin(), output)
         }
     }
 }
@@ -84,6 +90,11 @@ fn run_receiver(args: Args, running: Arc<AtomicBool>) {
 
     let mut receiver = Receiver::new(recv_params);
 
+    let input = match args.input {
+        Some(x) => Some(File::open(x).expect("File should be writable!")),
+        None => None,
+    };
+
     // Use the desired input (STDOUT or the provided file)
     match args.output {
         Some(output_file) => {
@@ -94,11 +105,11 @@ fn run_receiver(args: Args, running: Arc<AtomicBool>) {
                     panic!("Failed to open file: {:?}", e);
                 }
             };
-            receiver.run(&mut file)
+            receiver.run(&mut file, input)
         }
         None => {
             info!("Putting output to STDOUT...");
-            receiver.run(&mut std::io::stdout())
+            receiver.run(&mut std::io::stdout(), input)
         }
     }
 }

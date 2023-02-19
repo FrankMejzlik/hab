@@ -16,7 +16,7 @@ use sha3::Digest;
 /// * `trait ReceiverTrait`
 ///
 pub trait SenderTrait {
-    fn run(&mut self, input: &mut dyn Read);
+    fn run(&mut self, input: &mut dyn Read, output: Option<impl Write>);
 }
 
 ///
@@ -26,7 +26,7 @@ pub trait SenderTrait {
 /// * `trait SenderTrait`
 ///
 pub trait ReceiverTrait {
-    fn run(&mut self, output: &mut dyn Write);
+    fn run(&mut self, output: &mut dyn Write, input: Option<impl Read>);
 }
 
 ///
