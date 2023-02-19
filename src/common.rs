@@ -5,12 +5,15 @@
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt;
+use std::mem::size_of;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
+
 // ---
 use clap::Parser;
 use rand::{distributions::Distribution, Rng};
+
 // ---
 use crate::config;
 use crate::utils;
@@ -21,6 +24,15 @@ use crate::utils;
 pub type UnixTimestamp = u128;
 pub type SubscribersMapArc = Arc<Mutex<BTreeMap<SocketAddr, UnixTimestamp>>>;
 pub type PortNumber = u16;
+pub type DgramHash = u64;
+pub type DgramIdx = u32;
+
+pub fn get_datagram_sizes() -> (usize, usize, usize) {
+    let header_size = size_of::<DgramHash>() + 2 * size_of::<DgramIdx>();
+    let payload_size = config::DATAGRAM_SIZE - header_size;
+
+    (config::DATAGRAM_SIZE, header_size, payload_size)
+}
 
 ///
 /// A weighed discrete distribution.

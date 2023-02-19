@@ -163,7 +163,7 @@ impl<
             file.read_exact(&mut pks_bytes)
                 .expect("Failed to read state from file");
 
-            let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
+            let mut rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
 
             let layers =
                 bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
@@ -174,13 +174,11 @@ impl<
             assert_eq!(self.rng, rng);
             assert_eq!(self.layers, layers);
             assert_eq!(self.pks, pks);
-            debug!("ID store check OK.");
         }
     }
 
     fn load_state(&mut self) -> bool {
         let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
-        let filepath_string = format!("{}/{}", config::ID_DIR, config::ID_CHECK_FILENAME);
         debug!("Trying to load the state from '{filepath}'...");
         let mut file = match File::open(&filepath) {
             Ok(x) => x,
@@ -205,7 +203,7 @@ impl<
         file.read_exact(&mut pks_bytes)
             .expect("Failed to read state from file");
 
-        let rng: CsPrng = bincode::deserialize::<'_, CsPrng>(&rng_bytes).expect("!");
+        let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
         let layers =
             bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
         let pks = bincode::deserialize::<Vec<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
@@ -214,13 +212,7 @@ impl<
         self.rng = rng;
         self.layers = layers;
         self.pks = pks;
-
-        // Check
-        let exp_dump = std::fs::read_to_string(filepath_string).expect("!");
-        let act_dump = format!("{:?}", self);
-        assert_eq!(exp_dump, act_dump, "Load ID check failed!");
         info!("An existing ID loaded from '{}'.", filepath);
-
         true
     }
 

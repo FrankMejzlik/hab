@@ -18,7 +18,8 @@ use byteorder::WriteBytesExt;
 use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 // ---
-use crate::common::SubscribersMapArc;
+use crate::common;
+use crate::common::{DgramHash, DgramIdx, SubscribersMapArc};
 use crate::config;
 use crate::utils;
 #[allow(unused_imports)]
@@ -72,30 +73,39 @@ impl NetSender {
             subscribers,
         }
     }
-    fn split_to_datagrams(data: &[u8], dgram_size: usize) -> Vec<Vec<u8>> {
+
+    //
+    // Splits the provided data payload into datagrams of specific size containing metadata
+    // to reconstruct the payload after receiving.
+    //
+    // +-----------------+-----------+-----------+-----------------------------------+
+    // |    hash (8B)    |  idx (4B) | total (4B)| payload (up to max datagram size) |
+    // +-----------------+-----------+-----------+-----------------------------------+
+    //
+    fn split_to_datagrams(data: &[u8]) -> Vec<Vec<u8>> {
+        let mut in_cursor = std::io::Cursor::new(data);
+
         let mut res = vec![];
 
         let hash = xxh3_64(&data);
+        let hash = hash.to_le_bytes();
 
-        let header_size: u32 = 8 + 4 + 4;
-        let payload_size: u32 = (dgram_size as u32 - header_size).try_into().expect("!");
+        let (_, _, payload_size) = common::get_datagram_sizes();
+        let data_size = data.len();
 
-        let data_size: u32 = data.len().try_into().expect("!");
         let num_dgrams: u32 = ((data_size + payload_size - 1) / payload_size)
             .try_into()
             .expect("!");
-
-        let mut in_cursor = std::io::Cursor::new(data);
 
         for dgram_idx in 0..num_dgrams {
             let mut out_buffer: Vec<u8> = Vec::new();
             let mut out_cursor = std::io::Cursor::new(&mut out_buffer);
 
-            out_cursor.write_u64::<LittleEndian>(hash).expect("!");
-            out_cursor.write_u32::<LittleEndian>(dgram_idx).expect("!");
-            out_cursor.write_u32::<LittleEndian>(num_dgrams).expect("!");
+            out_cursor.write(&hash).expect("!");
+            out_cursor.write(&dgram_idx.to_le_bytes()).expect("!");
+            out_cursor.write(&num_dgrams.to_le_bytes()).expect("!");
 
-            let mut lc = in_cursor.take(payload_size.into());
+            let mut lc = in_cursor.take(payload_size as u64);
             lc.read_to_end(&mut out_buffer).expect("!");
             in_cursor = lc.into_inner();
             res.push(out_buffer);
@@ -108,7 +118,7 @@ impl NetSender {
     pub fn broadcast(&self, data: &[u8]) -> Result<(), NetSenderError> {
         let subs_guard = self.subscribers.lock().expect("Should be lockable!");
 
-        let datagrams = Self::split_to_datagrams(data, config::DATAGRAM_SIZE);
+        let datagrams = Self::split_to_datagrams(data);
 
         for (dest_sock_addr, _valid_until) in subs_guard.iter() {
             debug!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
@@ -170,6 +180,8 @@ impl NetSender {
 #[cfg(test)]
 mod tests {
 
+    use rand::Rng;
+    // ---
     use super::*;
 
     #[test]
@@ -180,15 +192,15 @@ mod tests {
         // +-----------------+-----------+-----------+-----------------------------------+
         //
 
-        let dgram_size = 64;
-        let header_size = 16;
+        let (dgram_size, header_size, _) = common::get_datagram_sizes();
 
-        let data: Vec<u8> = (0..=255).collect();
+        let mut rng = rand::thread_rng();
+        let data: Vec<u8> = (0..20000).map(|_| rng.gen()).collect();
 
         let hash = xxh3_64(&data);
         let num_dgrams = (data.len() as f32 / (dgram_size - header_size) as f32).ceil() as u32;
 
-        let datagrams = NetSender::split_to_datagrams(&data, dgram_size);
+        let datagrams = NetSender::split_to_datagrams(&data);
 
         let mut act_payload = vec![];
 

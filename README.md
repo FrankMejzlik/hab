@@ -60,4 +60,6 @@ tail -f ./env/receiver/logs/receiver.log
 tail -f ./env/receiver/logs/heartbeat_task.log
 # The UTF-8 repre of valid received messages
 tail -f ./env/receiver/logs/received.log
+# The inner state of fragmented block receiver
+tail -f ./env/receiver/logs/fragmented_blocks.log
 ```
