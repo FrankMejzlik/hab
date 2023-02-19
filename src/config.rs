@@ -21,6 +21,8 @@ pub const OUTPUT_DBG_DIR: &str = "logs/output/";
 
 pub const SUBSCRIBER_LIFETIME: u128 = 10_000;
 pub const BUFFER_SIZE: usize = 32 * 1024;
+/// For debug: 0 -> valid, 1 -> invalid
+pub const DUMMY_KEY_IDX: usize = 0;
 
 // ***************************************
 //             PARAMETERS

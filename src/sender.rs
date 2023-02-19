@@ -60,32 +60,20 @@ impl Sender {
     // ---
 
     /// Reads the available chunk of data from the provided input.
-    fn read_input(_input: &mut dyn Read) -> Vec<u8> {
-        let mut msg = String::default();
+    fn read_input(input: &mut dyn Read) -> Vec<u8> {
+        let mut input_bytes = vec![];
 
         #[cfg(feature = "simulate_stdin")]
         {
             // We simulate periodic data coming via input
             thread::sleep(Duration::from_secs(5));
-            msg = Local::now().format("%d-%m-%Y %H:%M:%S").to_string();
+            let msg = Local::now().format("%d-%m-%Y %H:%M:%S").to_string();
+			input_bytes = msg.into_bytes();
         }
-
-        #[cfg(not(feature = "simulate_stdin"))]
-        _input.read_to_string(&mut msg).expect("Fail");
-
-        debug!(tag: "sender", "Processing input '{}'...", &msg);
-
-        let bytes = msg.into_bytes();
-
-        // Print into the STDOUT what an input is
-        stdout()
-            .write_all(&bytes)
-            .expect("The output should be writable!");
-        stdout()
-            .write_all(&vec!['\n' as u8])
-            .expect("The output should be writable!");
-        stdout().flush().expect("Should be flushable!");
-        bytes
+        
+        let x = input.read_to_end(&mut input_bytes).expect("Fail!");
+        debug!(tag: "broadcasted", "{}", String::from_utf8_lossy(&input_bytes));
+		input_bytes
     }
 }
 

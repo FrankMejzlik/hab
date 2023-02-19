@@ -7,4 +7,4 @@ fi
 echo "Running receiver as $BUILD_TYPE..."
 
 cd env/receiver/
-../../target/$BUILD_TYPE/hashsig receiver "127.0.0.1:5555" --input ../data.signed
+../../target/$BUILD_TYPE/hashsig receiver "127.0.0.1:5555" --input ../data.signed --output ../data.output

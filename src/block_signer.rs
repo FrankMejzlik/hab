@@ -389,7 +389,7 @@ impl<
         }
     }
 
-    fn verify(&mut self, data: Vec<u8>) -> Result<(Vec<u8>, u64, u64), Error> {
+    fn verify(&mut self, data: Vec<u8>) -> Result<(Vec<u8>, bool, u64, u64), Error> {
         let block: Self::SignedBlock =
             bincode::deserialize(&data).expect("Should be deserializable!");
 
@@ -408,12 +408,9 @@ impl<
         let hash_pks = tmp;
         let hash_sign = tmp2;
 
-        let res = match Self::Signer::verify(&block.data, &block.signature, &block.pub_keys[0]) {
-            true => Ok((block.data, hash_sign, hash_pks)),
-            false => Err(Error::new("Unable to verify the signature!")),
-        };
+        let valid = Self::Signer::verify(&block.data, &block.signature, &block.pub_keys[config::DUMMY_KEY_IDX]);
         self.store_state();
 
-        res
+        Ok((block.data, valid, hash_sign, hash_pks))
     }
 }

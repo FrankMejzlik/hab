@@ -99,7 +99,7 @@ fn run_receiver(args: Args, running: Arc<AtomicBool>) {
     match args.output {
         Some(output_file) => {
             info!("Putting output to the file '{}'...", output_file);
-            let mut file = match File::open(output_file) {
+            let mut file = match File::create(output_file) {
                 Ok(file) => file,
                 Err(e) => {
                     panic!("Failed to open file: {:?}", e);

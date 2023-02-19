@@ -2,6 +2,8 @@
 *.log
 logs/*
 !logs/.phony
+env/*
+!env/*.input
 env/sender/*
 !env/sender/.phony
 env/receiver/*

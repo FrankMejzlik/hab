@@ -78,7 +78,7 @@ impl ReceiverTrait for Receiver {
             log_output!(hash, &signed_block);
 
             // Debug log the input signed block
-            let (mut valid_msg, hash_sign, hash_pks) = match self.verifier.verify(signed_block) {
+            let (msg, valid, hash_sign, hash_pks) = match self.verifier.verify(signed_block) {
                 Ok(x) => x,
                 Err(e) => {
                     warn!("Invalid block thrown away! ERROR: {e}");
@@ -86,17 +86,17 @@ impl ReceiverTrait for Receiver {
                 }
             };
 
-            let hash_whole = xxh3_64(&valid_msg) ^ hash_sign ^ hash_pks;
-            debug!(tag: "receiver","[{hash_whole}] {}", String::from_utf8_lossy(&valid_msg));
+            let hash_whole = xxh3_64(&msg) ^ hash_sign ^ hash_pks;
+            debug!(tag: "receiver","[{hash_whole}] {}", String::from_utf8_lossy(&msg));
 
             // OUTPUT
-            output
-                .write_all(&valid_msg)
-                .expect("The output should be writable!");
-            output
-                .write_all(&vec!['\n' as u8])
-                .expect("The output should be writable!");
-            output.flush().expect("Should be flushable!");
+            if valid {
+                output
+                    .write_all(&msg)
+                    .expect("The output should be writable!");
+                output.flush().expect("Should be flushable!");
+            }
+            debug!(tag: "received", "[{}] {}",valid, String::from_utf8_lossy(&msg));
         }
     }
 }
