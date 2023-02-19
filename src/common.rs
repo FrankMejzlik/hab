@@ -188,7 +188,7 @@ macro_rules! trace {
                 )
                 .unwrap();
 
-            log::trace!($($arg)+);
+            //log::trace!($($arg)+);
         }
     }};
 
@@ -223,7 +223,7 @@ macro_rules! debug {
                 )
                 .unwrap();
 
-            log::debug!($($arg)+);
+            //log::debug!($($arg)+);
         }
     }};
 
@@ -258,7 +258,7 @@ macro_rules! info {
                 )
                 .unwrap();
 
-            log::info!($($arg)+);
+            //log::info!($($arg)+);
         }
     }};
 
@@ -294,7 +294,7 @@ macro_rules! warn {
                 )
                 .unwrap();
 
-            log::warn!($($arg)+);
+            //log::warn!($($arg)+);
         }
     }};
 
@@ -330,7 +330,7 @@ macro_rules! error {
                 )
                 .unwrap();
 
-            log::error!($($arg)+);
+            //log::error!($($arg)+);
         }
     }};
 

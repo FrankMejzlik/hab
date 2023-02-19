@@ -90,8 +90,8 @@ pub struct BlockSigner<
     const MSG_HASH_SIZE: usize,
     const TREE_HASH_SIZE: usize,
     CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-    MsgHashFn: Digest,
-    TreeHashFn: Digest,
+    MsgHashFn: Digest + Debug,
+    TreeHashFn: Digest + Debug,
 > {
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
@@ -107,14 +107,15 @@ impl<
         const MSG_HASH_SIZE: usize,
         const TREE_HASH_SIZE: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-        MsgHashFn: Digest,
-        TreeHashFn: Digest,
+        MsgHashFn: Digest + Debug,
+        TreeHashFn: Digest + Debug,
     >
     BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
     fn store_state(&mut self) {
         create_dir_all(config::ID_DIR).expect("!");
         let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
+        let filepath_string = format!("{}/{}", config::ID_DIR, config::ID_CHECK_FILENAME);
         {
             let mut file = File::create(filepath).expect("The file should be writable!");
 
@@ -134,6 +135,11 @@ impl<
                 .expect("Failed to write state to file");
             file.write_all(&pks_bytes)
                 .expect("Failed to write state to file");
+
+            let mut file2 = File::create(filepath_string).expect("!");
+            file2
+                .write_all(&format!("{:?}", self).into_bytes())
+                .expect("!");
         }
 
         // Check
@@ -141,14 +147,11 @@ impl<
             let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
             let mut file = File::open(filepath).expect("!");
 
-            let _rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+            let rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
             let layers_len = file.read_u64::<LittleEndian>().expect("!") as usize;
             let pks_len = file.read_u64::<LittleEndian>().expect("!") as usize;
 
-            // let mut state = [0u8; 32];
-            // file.read_exact(&mut state)
-            //     .expect("Failed to read state from file");
-            let mut rng_bytes = vec![0u8; _rng_len];
+            let mut rng_bytes = vec![0u8; rng_len];
             file.read_exact(&mut rng_bytes)
                 .expect("Failed to read state from file");
 
@@ -160,7 +163,7 @@ impl<
             file.read_exact(&mut pks_bytes)
                 .expect("Failed to read state from file");
 
-            let rng: CsPrng = bincode::deserialize::<'_, CsPrng>(&rng_bytes).expect("!");
+            let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
 
             let layers =
                 bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
@@ -177,18 +180,22 @@ impl<
 
     fn load_state(&mut self) -> bool {
         let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
+        let filepath_string = format!("{}/{}", config::ID_DIR, config::ID_CHECK_FILENAME);
         debug!("Trying to load the state from '{filepath}'...");
-        let mut file = match File::open(filepath) {
+        let mut file = match File::open(&filepath) {
             Ok(x) => x,
-            Err(_) => return false,
+            Err(_) => {
+                info!("No existing ID found.");
+                return false;
+            }
         };
 
-        let _rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+        let rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
         let layers_len = file.read_u64::<LittleEndian>().expect("!") as usize;
         let pks_len = file.read_u64::<LittleEndian>().expect("!") as usize;
 
-        let mut state = [0u8; 32];
-        file.read_exact(&mut state)
+        let mut rng_bytes = vec![0u8; rng_len];
+        file.read_exact(&mut rng_bytes)
             .expect("Failed to read state from file");
 
         let mut layers_bytes = vec![0u8; layers_len];
@@ -199,13 +206,22 @@ impl<
         file.read_exact(&mut pks_bytes)
             .expect("Failed to read state from file");
 
+        let rng: CsPrng = bincode::deserialize::<'_, CsPrng>(&rng_bytes).expect("!");
         let layers =
             bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
         let pks = bincode::deserialize::<Vec<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
             .expect("!");
 
+        self.rng = rng;
         self.layers = layers;
         self.pks = pks;
+
+        // Check
+        let exp_dump = std::fs::read_to_string(filepath_string).expect("!");
+        let act_dump = format!("{:?}", self);
+        assert_eq!(exp_dump, act_dump, "Load ID check failed!");
+        info!("An existing ID loaded from '{}'.", filepath);
+
         true
     }
 
@@ -234,10 +250,20 @@ impl<
         const MSG_HASH_SIZE: usize,
         const TREE_HASH_SIZE: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-        MsgHashFn: Digest,
-        TreeHash: Digest,
+        MsgHashFn: Digest + Debug,
+        TreeHashFn: Digest + Debug,
     > BlockSignerTrait
-    for BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHash>
+    for BlockSigner<
+        K,
+        TAU,
+        TAUPLUS,
+        T,
+        MSG_HASH_SIZE,
+        TREE_HASH_SIZE,
+        CsPrng,
+        MsgHashFn,
+        TreeHashFn,
+    >
 {
     type Error = Error;
     type Signer = HorstSigScheme<
@@ -249,7 +275,7 @@ impl<
         TREE_HASH_SIZE,
         CsPrng,
         MsgHashFn,
-        TreeHash,
+        TreeHashFn,
     >;
 
     type SecretKey = <Self::Signer as SignatureSchemeTrait>::SecretKey;
@@ -312,10 +338,20 @@ impl<
         const MSG_HASH_SIZE: usize,
         const TREE_HASH_SIZE: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-        MsgHashFn: Digest,
-        TreeHash: Digest,
+        MsgHashFn: Digest + Debug,
+        TreeHashFn: Digest + Debug,
     > BlockVerifierTrait
-    for BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHash>
+    for BlockSigner<
+        K,
+        TAU,
+        TAUPLUS,
+        T,
+        MSG_HASH_SIZE,
+        TREE_HASH_SIZE,
+        CsPrng,
+        MsgHashFn,
+        TreeHashFn,
+    >
 {
     type Error = Error;
     type Signer = HorstSigScheme<
@@ -327,7 +363,7 @@ impl<
         TREE_HASH_SIZE,
         CsPrng,
         MsgHashFn,
-        TreeHash,
+        TreeHashFn,
     >;
 
     type SecretKey = <Self::Signer as SignatureSchemeTrait>::SecretKey;

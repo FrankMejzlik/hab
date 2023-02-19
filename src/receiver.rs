@@ -50,9 +50,13 @@ impl Receiver {
 }
 
 impl ReceiverTrait for Receiver {
-    fn run(&mut self, _output: &mut dyn Write) {
+    fn run(&mut self, output: &mut dyn Write) {
         // The main loop as long as the app should run
         while self.params.running.load(Ordering::Acquire) {
+            // INPUT: file
+            // TODO:
+
+            // INPUT: network
             // Block until we receive some whole signed block
             let signed_block = match self.net_receiver.receive() {
                 Ok(x) => x,
@@ -62,12 +66,12 @@ impl ReceiverTrait for Receiver {
                 }
             };
 
-            // Debug log the input signed block
             let hash = xxh3_64(&signed_block);
-            log_output!(hash, &signed_block);
             debug!(tag: "receiver", "Received signed block of {} bytes with hash '{hash}'.", signed_block.len());
+            log_output!(hash, &signed_block);
 
-            let (valid_msg, sign_hash, pks_hash) = match self.verifier.verify(signed_block) {
+            // Debug log the input signed block
+            let (mut valid_msg, hash_sign, hash_pks) = match self.verifier.verify(signed_block) {
                 Ok(x) => x,
                 Err(e) => {
                     warn!("Invalid block thrown away! ERROR: {e}");
@@ -75,11 +79,17 @@ impl ReceiverTrait for Receiver {
                 }
             };
 
-            // STDOUT
-            println!(
-                "msg: {}\n\thash: {hash}\n\tsignature: {sign_hash}\n\thash_pks: {pks_hash}",
-                String::from_utf8_lossy(&valid_msg)
-            );
+            let hash_whole = xxh3_64(&valid_msg) ^ hash_sign ^ hash_pks;
+            debug!(tag: "receiver","[{hash_whole}] {}", String::from_utf8_lossy(&valid_msg));
+
+            // OUTPUT
+            output
+                .write_all(&valid_msg)
+                .expect("The output should be writable!");
+            output
+                .write_all(&vec!['\n' as u8])
+                .expect("The output should be writable!");
+            output.flush().expect("Should be flushable!");
         }
     }
 }

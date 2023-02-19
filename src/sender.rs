@@ -3,7 +3,7 @@
 //!
 
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{stdout, Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -39,6 +39,12 @@ impl Sender {
         let block_signer_params = BlockSignerParams { seed: params.seed };
         let signer = BlockSignerInst::new(block_signer_params);
 
+        if std::path::Path::new(&format!("{}/{}", config::ID_DIR, config::ID_CHECK_FILENAME))
+            .exists()
+        {
+            let act_dump = format!("{:#?}", signer);
+        }
+
         let net_sender_params = NetSenderParams {
             addr: params.addr.clone(),
             running: params.running.clone(),
@@ -69,7 +75,17 @@ impl Sender {
 
         debug!(tag: "sender", "Processing input '{}'...", &msg);
 
-        msg.into_bytes()
+        let bytes = msg.into_bytes();
+
+        // Print into the STDOUT what an input is
+        stdout()
+            .write_all(&bytes)
+            .expect("The output should be writable!");
+        stdout()
+            .write_all(&vec!['\n' as u8])
+            .expect("The output should be writable!");
+        stdout().flush().expect("Should be flushable!");
+        bytes
     }
 }
 
@@ -104,18 +120,18 @@ impl SenderTrait for Sender {
 
             // Debug log the input signed block
             let hash = xxh3_64(&signed_data);
-            log_input!(hash, &signed_data);
             debug!(tag: "sender", "\tBroadcasting {} bytes with hash '{hash}'...", signed_data.len());
+            log_input!(hash, &signed_data);
 
-            // STDOUT
-            println!(
-                "msg: {}\n\thash: {hash}\n\tsignature: {hash_sign}\n\thash_pks: {hash_pks}",
-                String::from_utf8_lossy(&data)
-            );
+            let hash_whole = xxh3_64(&data) ^ hash_sign ^ hash_pks;
+            debug!(tag: "sender", "[{hash_whole}] {}", String::from_utf8_lossy(&data));
 
+            // OUTPUT: network
             if let Err(e) = self.net_sender.broadcast(&signed_data) {
                 panic!("Failed to broadcast the data block!\nERROR: {:?}", e);
             };
+            // OUTPUT: file
+            // TODO:
         }
     }
 }
