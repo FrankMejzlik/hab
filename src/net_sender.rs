@@ -2,14 +2,19 @@
 //! Module for broadcasting the data over the network to `NetReceiver`s.
 //!
 
+use byteorder::LittleEndian;
 use std::collections::BTreeMap;
+use std::io::Read;
+use std::io::Write;
 use std::net::{SocketAddr, SocketAddrV4};
 use std::str::FromStr;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
+use xxhash_rust::xxh3::xxh3_64;
 // ---
+use byteorder::WriteBytesExt;
 use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 // ---
@@ -67,18 +72,54 @@ impl NetSender {
             subscribers,
         }
     }
+    fn split_to_datagrams(data: &[u8], dgram_size: usize) -> Vec<Vec<u8>> {
+        let mut res = vec![];
+
+        let hash = xxh3_64(&data);
+
+        let header_size: u32 = 8 + 4 + 4;
+        let payload_size: u32 = (dgram_size as u32 - header_size).try_into().expect("!");
+
+        let data_size: u32 = data.len().try_into().expect("!");
+        let num_dgrams: u32 = ((data_size + payload_size - 1) / payload_size)
+            .try_into()
+            .expect("!");
+
+        let mut in_cursor = std::io::Cursor::new(data);
+
+        for dgram_idx in 0..num_dgrams {
+            let mut out_buffer: Vec<u8> = Vec::new();
+            let mut out_cursor = std::io::Cursor::new(&mut out_buffer);
+
+            out_cursor.write_u64::<LittleEndian>(hash).expect("!");
+            out_cursor.write_u32::<LittleEndian>(dgram_idx).expect("!");
+            out_cursor.write_u32::<LittleEndian>(num_dgrams).expect("!");
+
+            let mut lc = in_cursor.take(payload_size.into());
+            lc.read_to_end(&mut out_buffer).expect("!");
+            in_cursor = lc.into_inner();
+            res.push(out_buffer);
+        }
+
+        res
+    }
+    // ---
 
     pub fn broadcast(&self, data: &[u8]) -> Result<(), NetSenderError> {
         let subs_guard = self.subscribers.lock().expect("Should be lockable!");
 
+        let datagrams = Self::split_to_datagrams(data, config::DATAGRAM_SIZE);
+
         for (dest_sock_addr, _valid_until) in subs_guard.iter() {
             debug!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
-            if let Err(e) = self
-                .rt
-                .block_on(self.sender_socket.send_to(data, dest_sock_addr.clone()))
-            {
-                warn!("Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
-            };
+            for dgram in datagrams.iter() {
+                if let Err(e) = self
+                    .rt
+                    .block_on(self.sender_socket.send_to(dgram, dest_sock_addr.clone()))
+                {
+                    warn!("Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
+                };
+            }
         }
 
         Ok(())
@@ -123,5 +164,46 @@ impl NetSender {
 
             debug!(tag: "registrator_task", "Accepted a heartbeat from '{peer}' listening for data at port {recv_port}.");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_split_to_datagrams() {
+        //
+        // +-----------------+-----------+-----------+-----------------------------------+
+        // |    hash (8B)    |  idx (4B) | total (4B)| payload (up to max datagram size) |
+        // +-----------------+-----------+-----------+-----------------------------------+
+        //
+
+        let dgram_size = 64;
+        let header_size = 16;
+
+        let data: Vec<u8> = (0..=255).collect();
+
+        let hash = xxh3_64(&data);
+        let num_dgrams = (data.len() as f32 / (dgram_size - header_size) as f32).ceil() as u32;
+
+        let datagrams = NetSender::split_to_datagrams(&data, dgram_size);
+
+        let mut act_payload = vec![];
+
+        for (idx, d) in datagrams.iter().enumerate() {
+            let index = idx as u32;
+
+            // Check hash
+            assert_eq!(&d[0..8], &hash.to_le_bytes());
+            // Check datagram indices
+            assert_eq!(&d[8..12], &index.to_le_bytes());
+            // Check datagram count
+            assert_eq!(&d[12..16], &num_dgrams.to_le_bytes());
+
+            act_payload.extend_from_slice(&d[16..]);
+        }
+        assert_eq!(act_payload, data);
     }
 }

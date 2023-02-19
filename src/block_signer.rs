@@ -407,7 +407,11 @@ impl<
         let hash_pks = tmp;
         let hash_sign = tmp2;
 
-        let valid = Self::Signer::verify(&block.data, &block.signature, &block.pub_keys[config::DUMMY_KEY_IDX]);
+        let valid = Self::Signer::verify(
+            &block.data,
+            &block.signature,
+            &block.pub_keys[config::DUMMY_KEY_IDX],
+        );
         self.store_state();
 
         Ok((block.data, valid, hash_sign, hash_pks))
