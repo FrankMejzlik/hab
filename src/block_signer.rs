@@ -4,16 +4,16 @@
 
 use std::marker::PhantomData;
 // ---
-use bincode::{deserialize, serialize};
 use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
+use core::fmt::Debug;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::de::Deserializer;
 use serde::ser::{SerializeStruct, Serializer};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha3::Digest;
 use slice_of_array::SliceFlatExt;
 use std::fs::{create_dir_all, File};
@@ -89,13 +89,14 @@ pub struct BlockSigner<
     const T: usize,
     const MSG_HASH_SIZE: usize,
     const TREE_HASH_SIZE: usize,
-    CsPrng: CryptoRng + SeedableRng<Seed = [u8; 32]> + RngCore + Clone,
+    CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
     MsgHashFn: Digest,
     TreeHashFn: Digest,
 > {
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
     pks: Vec<<Self as BlockSignerTrait>::PublicKey>,
+    _x: PhantomData<(MsgHashFn, TreeHashFn)>,
 }
 
 impl<
@@ -105,7 +106,7 @@ impl<
         const T: usize,
         const MSG_HASH_SIZE: usize,
         const TREE_HASH_SIZE: usize,
-        CsPrng: CryptoRng + SeedableRng<Seed = [u8; 32]> + RngCore + Clone,
+        CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
         MsgHashFn: Digest,
         TreeHashFn: Digest,
     >
@@ -117,19 +118,17 @@ impl<
         {
             let mut file = File::create(filepath).expect("The file should be writable!");
 
-            let mut state = [0u8; 32];
-            self.rng.fill_bytes(&mut state);
-
+            let rng_bytes = bincode::serialize(&self.rng).expect("!");
             let layers_bytes = bincode::serialize(&self.layers).expect("!");
             let pks_bytes = bincode::serialize(&self.pks).expect("!");
 
-            file.write_u64::<LittleEndian>(state.len() as u64)
+            file.write_u64::<LittleEndian>(rng_bytes.len() as u64)
                 .expect("!");
             file.write_u64::<LittleEndian>(layers_bytes.len() as u64)
                 .expect("!");
             file.write_u64::<LittleEndian>(pks_bytes.len() as u64)
                 .expect("!");
-            file.write_all(&state)
+            file.write_all(&rng_bytes)
                 .expect("Failed to write state to file");
             file.write_all(&layers_bytes)
                 .expect("Failed to write state to file");
@@ -146,8 +145,11 @@ impl<
             let layers_len = file.read_u64::<LittleEndian>().expect("!") as usize;
             let pks_len = file.read_u64::<LittleEndian>().expect("!") as usize;
 
-            let mut state = [0u8; 32];
-            file.read_exact(&mut state)
+            // let mut state = [0u8; 32];
+            // file.read_exact(&mut state)
+            //     .expect("Failed to read state from file");
+            let mut rng_bytes = vec![0u8; _rng_len];
+            file.read_exact(&mut rng_bytes)
                 .expect("Failed to read state from file");
 
             let mut layers_bytes = vec![0u8; layers_len];
@@ -158,12 +160,15 @@ impl<
             file.read_exact(&mut pks_bytes)
                 .expect("Failed to read state from file");
 
+            let rng: CsPrng = bincode::deserialize::<'_, CsPrng>(&rng_bytes).expect("!");
+
             let layers =
                 bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
             let pks =
                 bincode::deserialize::<Vec<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
                     .expect("!");
 
+            assert_eq!(self.rng, rng);
             assert_eq!(self.layers, layers);
             assert_eq!(self.pks, pks);
             debug!("ID store check OK.");
@@ -199,7 +204,6 @@ impl<
         let pks = bincode::deserialize::<Vec<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
             .expect("!");
 
-        self.rng = CsPrng::from_seed(state);
         self.layers = layers;
         self.pks = pks;
         true
@@ -229,7 +233,7 @@ impl<
         const T: usize,
         const MSG_HASH_SIZE: usize,
         const TREE_HASH_SIZE: usize,
-        CsPrng: CryptoRng + SeedableRng<Seed = [u8; 32]> + RngCore + Clone,
+        CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
         MsgHashFn: Digest,
         TreeHash: Digest,
     > BlockSignerTrait
@@ -267,6 +271,7 @@ impl<
             rng,
             layers,
             pks: vec![],
+            _x: PhantomData,
         };
 
         match Self::load_state(&mut new_inst) {
@@ -306,7 +311,7 @@ impl<
         const T: usize,
         const MSG_HASH_SIZE: usize,
         const TREE_HASH_SIZE: usize,
-        CsPrng: CryptoRng + SeedableRng<Seed = [u8; 32]> + RngCore + Clone,
+        CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
         MsgHashFn: Digest,
         TreeHash: Digest,
     > BlockVerifierTrait
@@ -344,6 +349,7 @@ impl<
             rng,
             layers,
             pks: vec![],
+            _x: PhantomData,
         }
     }
 
