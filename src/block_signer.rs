@@ -385,12 +385,19 @@ impl<
 
         layers.insert(0, keypair);
 
-        BlockSigner {
+		let mut new_inst = BlockSigner {
             rng,
             layers,
             pks: HashSet::new(),
             _x: PhantomData,
-        }
+        };
+		match Self::load_state(&mut new_inst) {
+            true => info!("The existing ID was loaded."),
+            false => info!("No existing ID found, creating a new one."),
+        };
+		
+		debug!(tag: "block_verifier", "{}", new_inst.dump_pks());
+        new_inst        
     }
 
     fn verify(&mut self, data: Vec<u8>) -> Result<(Vec<u8>, bool, u64, u64), Error> {
@@ -418,7 +425,7 @@ impl<
             &block.pub_keys[config::DUMMY_KEY_IDX],
         );
 
-
+		self.pks.insert(block.pub_keys.first().expect("!").to_owned());
 
         self.store_state();
 
