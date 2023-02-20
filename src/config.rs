@@ -13,17 +13,34 @@ use crate::block_signer::BlockSigner;
 pub const ID_DIR: &str = ".identity/";
 /// A name of the file where the state of `BlockSigner` is serialized.
 pub const ID_FILENAME: &str = "id.bin";
-pub const ID_CHECK_FILENAME: &str = "id.txt";
 
+/// A directory where we store the logs by default (e.g. when you run `cargo run`)
 pub const LOGS_DIR: &str = "logs/";
+/// A directory for output of signed blocks that the SENDER boradcasts.
 pub const INPUT_DBG_DIR: &str = "logs/input/";
+/// A directory for output of signed blocks that the RECEIVER receives.
 pub const OUTPUT_DBG_DIR: &str = "logs/output/";
 
+/// How long we will keep the subscriber alive without receiving another heartbeat.
 pub const SUBSCRIBER_LIFETIME: u128 = 10_000;
+/// Size of the buffer used to receive UDP datagrams.
 pub const BUFFER_SIZE: usize = 1024;
-/// For debug: 0 -> valid, 1 -> invalid
-pub const DUMMY_KEY_IDX: usize = 0;
+/// Size of the datagram we send over the UDP prorocol.
 pub const DATAGRAM_SIZE: usize = 512;
+/// List of logging tags that we use throuought the program.
+pub const USED_LOG_TAGS: &[&'static str] = &[
+    "output",
+    "sender",
+    "registrator_task",
+    "subscribers",
+    "broadcasted",
+    "block_signer",
+    "receiver",
+    "heartbeat_task",
+    "received",
+    "fragmented_blocks",
+    "block_verifier",
+];
 
 // ***************************************
 //             PARAMETERS

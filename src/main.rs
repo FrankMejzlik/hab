@@ -16,7 +16,6 @@ mod traits;
 mod utils;
 
 use std::fs::File;
-use std::io::BufReader;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -30,10 +29,10 @@ use crate::common::{Args, ProgramMode};
 //use crate::diag_server::DiagServer;
 use crate::receiver::{Receiver, ReceiverParams};
 use crate::sender::{Sender, SenderParams};
-use crate::traits::{DiagServerTrait, ReceiverTrait, SenderTrait};
+use crate::traits::{ReceiverTrait, SenderTrait};
 
 #[allow(dead_code)]
-fn run_diag_server(_args: Args, running: Arc<AtomicBool>) {
+fn run_diag_server(_args: Args, _running: Arc<AtomicBool>) {
     // info!("Running a diag server...");
 
     // let mut diag_server = DiagServer::new("127.0.0.1:9000".parse().unwrap());
@@ -137,6 +136,12 @@ fn init_application() -> Arc<AtomicBool> {
         std::process::exit(0x01);
     })
     .expect("Error setting Ctrl-C handler");
+
+    for t in config::USED_LOG_TAGS {
+        trace!(tag: t, "+++++++++++++++++++++++++++++++++");
+        trace!(tag: t, "+++++++++ PROGRAM START +++++++++");
+        trace!(tag: t, "+++++++++++++++++++++++++++++++++");
+    }
 
     running
 }

@@ -5,39 +5,32 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::hash::Hash;
+use std::fs::{create_dir_all, File};
+use std::io::{Read, Write};
 use std::marker::PhantomData;
 // ---
 use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use core::fmt::Debug;
-use std::collections::BTreeSet;
-
+use rand::prelude::Distribution;
 use rand_core::{CryptoRng, RngCore, SeedableRng};
-use serde::de::Deserializer;
-use serde::ser::{SerializeStruct, Serializer};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha3::Digest;
-use slice_of_array::SliceFlatExt;
-use std::fs::{create_dir_all, File};
-use std::io::{Read, Write};
 use xxhash_rust::xxh3::xxh3_64;
 // ---
+use crate::common::DiscreteDistribution;
 use crate::common::Error;
 use crate::config;
-use crate::horst::HorstPublicKey;
 pub use crate::horst::{
     HorstKeypair, HorstPublicKey as PublicKey, HorstSecretKey as SecretKey, HorstSigScheme,
     HorstSignature as Signature,
 };
 use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait};
 use crate::utils;
-use crate::utils::unix_ts;
 use crate::utils::UnixTimestamp;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
-use std::{fmt, num};
 
 ///
 /// Wrapper for one key.
@@ -146,6 +139,7 @@ pub struct BlockSigner<
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
     pks: HashMap<<Self as BlockSignerTrait>::PublicKey, (UnixTimestamp, u8)>,
+    distr: DiscreteDistribution,
     _x: PhantomData<(MsgHashFn, TreeHashFn)>,
 }
 
@@ -184,13 +178,13 @@ impl<
     fn store_state(&mut self) {
         create_dir_all(config::ID_DIR).expect("!");
         let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
-        let filepath_string = format!("{}/{}", config::ID_DIR, config::ID_CHECK_FILENAME);
         {
             let mut file = File::create(filepath).expect("The file should be writable!");
 
             let rng_bytes = bincode::serialize(&self.rng).expect("!");
             let layers_bytes = bincode::serialize(&self.layers).expect("!");
             let pks_bytes = bincode::serialize(&self.pks).expect("!");
+            let distr_bytes = bincode::serialize(&self.distr).expect("!");
 
             file.write_u64::<LittleEndian>(rng_bytes.len() as u64)
                 .expect("!");
@@ -198,17 +192,16 @@ impl<
                 .expect("!");
             file.write_u64::<LittleEndian>(pks_bytes.len() as u64)
                 .expect("!");
+            file.write_u64::<LittleEndian>(distr_bytes.len() as u64)
+                .expect("!");
             file.write_all(&rng_bytes)
                 .expect("Failed to write state to file");
             file.write_all(&layers_bytes)
                 .expect("Failed to write state to file");
             file.write_all(&pks_bytes)
                 .expect("Failed to write state to file");
-
-            let mut file2 = File::create(filepath_string).expect("!");
-            file2
-                .write_all(&format!("{:?}", self).into_bytes())
-                .expect("!");
+            file.write_all(&distr_bytes)
+                .expect("Failed to write state to file");
         }
 
         // Check
@@ -219,6 +212,7 @@ impl<
             let rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
             let layers_len = file.read_u64::<LittleEndian>().expect("!") as usize;
             let pks_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+            let distr_len = file.read_u64::<LittleEndian>().expect("!") as usize;
 
             let mut rng_bytes = vec![0u8; rng_len];
             file.read_exact(&mut rng_bytes)
@@ -232,6 +226,10 @@ impl<
             file.read_exact(&mut pks_bytes)
                 .expect("Failed to read state from file");
 
+            let mut distr_bytes = vec![0u8; distr_len];
+            file.read_exact(&mut distr_bytes)
+                .expect("Failed to read state from file");
+
             let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
 
             let layers =
@@ -240,10 +238,12 @@ impl<
                 HashMap<<Self as BlockSignerTrait>::PublicKey, (UnixTimestamp, u8)>,
             >(&pks_bytes)
             .expect("!");
+            let distr: DiscreteDistribution = bincode::deserialize(&distr_bytes).expect("!");
 
             assert_eq!(self.rng, rng);
             assert_eq!(self.layers, layers);
             assert_eq!(self.pks, pks);
+            assert_eq!(self.distr, distr);
         }
     }
 
@@ -260,6 +260,7 @@ impl<
         let rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
         let layers_len = file.read_u64::<LittleEndian>().expect("!") as usize;
         let pks_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+        let distr_len = file.read_u64::<LittleEndian>().expect("!") as usize;
 
         let mut rng_bytes = vec![0u8; rng_len];
         file.read_exact(&mut rng_bytes)
@@ -273,6 +274,10 @@ impl<
         file.read_exact(&mut pks_bytes)
             .expect("Failed to read state from file");
 
+        let mut distr_bytes = vec![0u8; distr_len];
+        file.read_exact(&mut distr_bytes)
+            .expect("Failed to read state from file");
+
         let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
         let layers =
             bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
@@ -280,12 +285,14 @@ impl<
             HashMap<<Self as BlockSignerTrait>::PublicKey, (UnixTimestamp, u8)>,
         >(&pks_bytes)
         .expect("!");
+        let distr: DiscreteDistribution = bincode::deserialize(&distr_bytes).expect("!");
 
         info!("An existing ID loaded from '{}'.", filepath);
         Some(Self {
             rng,
             layers,
             pks,
+            distr,
             _x: PhantomData,
         })
     }
@@ -304,10 +311,11 @@ impl<
             }
         }
 
-        let sign_layer = 0; //< Sample from distrib here
+        let sign_layer = self.distr.sample(&mut self.rng);
+        debug!(tag:"sender", "Signing with key from the layer {sign_layer}...");
         let signing_key = self.layers.data[sign_layer]
             .first_mut()
-            .expect(("At least one key per layer must be there!"));
+            .expect("At least one key per layer must be there!");
         signing_key.signs += 1;
         signing_key.last_cerified = utils::unix_ts();
 
@@ -373,6 +381,12 @@ impl<
             params.seed, params.layers
         );
 
+        // Instantiate the probability distribution
+        let weights = (0..params.layers)
+            .map(|x| 2_f64.powf(x as f64))
+            .collect::<Vec<f64>>();
+        let distr = DiscreteDistribution::new(weights);
+
         // Initially populate the layers with keys
         let mut rng = CsPrng::seed_from_u64(params.seed);
         let mut layers = KeyLayers::new(params.layers);
@@ -386,6 +400,7 @@ impl<
             rng,
             layers,
             pks: HashMap::new(),
+            distr,
             _x: PhantomData,
         };
 
@@ -397,14 +412,6 @@ impl<
         let (sk, pub_keys) = self.next_key();
         let signature = Self::Signer::sign(data, sk);
         debug!(tag: "block_signer", "{}", self.dump_layers());
-
-        // --- sanity check ---
-        assert!(Self::Signer::verify(
-            data,
-            &signature,
-            &self.layers.data[0][0].key.public
-        ));
-        // --- sanity check ---
 
         self.store_state();
 
@@ -475,6 +482,7 @@ impl<
             rng: CsPrng::seed_from_u64(0), //< Not used
             layers: KeyLayers::new(0),     //< Not used
             pks: HashMap::new(),
+            distr: DiscreteDistribution::new(vec![]), //< Not used
             _x: PhantomData,
         };
 

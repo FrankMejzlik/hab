@@ -2,6 +2,8 @@
 //! Code shared throught the project.
 //!
 
+use bincode::de;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt;
@@ -40,7 +42,8 @@ pub fn get_datagram_sizes() -> (usize, usize, usize) {
 /// The provided weights of the distribution do NOT need to sum up to 1.
 /// Only the proportion of the total sum matters.
 ///
-struct DiscreteDistribution {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DiscreteDistribution {
     /// Weights of the discrete events (no need to sum up to 1).
     weights: Vec<f64>,
 }
@@ -52,7 +55,7 @@ impl DiscreteDistribution {
     /// # Arguments
     /// * `weights` - Weights to determine the probability of the given event (index) to occur.
     ///
-    fn new(weights: Vec<f64>) -> DiscreteDistribution {
+    pub fn new(weights: Vec<f64>) -> DiscreteDistribution {
         DiscreteDistribution { weights }
     }
 }
