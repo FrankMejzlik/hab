@@ -27,23 +27,16 @@
 //! * `ImplCsPrng` - Cryptographically safe pseudo-random number generator.
 //!
 use std::boxed::Box;
-use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
 // ---
-use ::slice_of_array::prelude::*;
 use hex::encode;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use rand_core::{CryptoRng, RngCore, SeedableRng};
-use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
-use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
-use serde_big_array::BigArray;
 use sha3::Digest;
-
 // ---
-use crate::box_array;
 use crate::merkle_tree::MerkleTree;
 use crate::traits::{KeyPair, SignatureSchemeTrait};
 use crate::utils;

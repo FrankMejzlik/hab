@@ -2,8 +2,7 @@
 //! Code shared throught the project.
 //!
 
-use bincode::de;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt;
@@ -11,11 +10,9 @@ use std::mem::size_of;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
-
 // ---
 use clap::Parser;
 use rand::{distributions::Distribution, Rng};
-
 // ---
 use crate::config;
 use crate::utils;

@@ -13,7 +13,6 @@ use crate::net_receiver::{NetReceiver, NetReceiverParams};
 use crate::traits::{BlockVerifierTrait, ReceiverTrait};
 use xxhash_rust::xxh3::xxh3_64;
 // ---
-use crate::config;
 use crate::log_output;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};

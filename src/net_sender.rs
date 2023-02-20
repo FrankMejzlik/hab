@@ -2,7 +2,6 @@
 //! Module for broadcasting the data over the network to `NetReceiver`s.
 //!
 
-use byteorder::LittleEndian;
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::io::Write;
@@ -12,14 +11,13 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
-use xxhash_rust::xxh3::xxh3_64;
 // ---
-use byteorder::WriteBytesExt;
 use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
+use xxhash_rust::xxh3::xxh3_64;
 // ---
 use crate::common;
-use crate::common::{DgramHash, DgramIdx, SubscribersMapArc};
+use crate::common::SubscribersMapArc;
 use crate::config;
 use crate::utils;
 #[allow(unused_imports)]

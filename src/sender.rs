@@ -2,18 +2,16 @@
 //! The main module providing high-level API for the sender of the data.
 //!
 
-use std::fs::File;
-use std::io::{stdout, Read, Write};
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
-use std::{mem::size_of_val, thread};
 // ---
 use crate::block_signer::BlockSignerParams;
 use chrono::Local;
 use xxhash_rust::xxh3::xxh3_64;
 // ---
-use crate::config;
 use crate::config::BlockSignerInst;
 use crate::net_sender::{NetSender, NetSenderParams};
 use crate::traits::{BlockSignerTrait, SenderTrait};

@@ -2,33 +2,28 @@
 //! Module for receiving the data broadcasted by the `NetSender`.
 //!
 
-use byteorder::{LittleEndian, ReadBytesExt};
 use std::collections::HashMap;
-use std::hash::Hash;
+use std::fmt;
 use std::io::{Cursor, Read};
-use std::net::{Ipv4Addr, SocketAddrV4};
-use std::time::Instant;
+use std::net::SocketAddrV4;
 use std::time::SystemTime;
-use std::{fmt, num};
 use std::{
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
 };
 // ---
-use byteorder::WriteBytesExt;
+use byteorder::{LittleEndian, ReadBytesExt};
 use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
-use tungstenite::http::uri::Port;
 // ---
 use crate::common;
 use crate::common::{DgramHash, DgramIdx};
 use crate::common::{Error, PortNumber};
 use crate::config;
-use crate::traits::NetworkReceiverTrait;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
@@ -219,7 +214,7 @@ impl NetReceiver {
     pub fn receive(&mut self) -> Result<Vec<u8>, Error> {
         loop {
             let mut buf = vec![0; config::BUFFER_SIZE];
-            let (recv, peer) = match self.rt.block_on(self.socket.recv_from(&mut buf)) {
+            let (recv, _peer) = match self.rt.block_on(self.socket.recv_from(&mut buf)) {
                 Ok(x) => x,
                 Err(e) => {
                     return Err(Error::new(&format!(
@@ -251,7 +246,7 @@ impl NetReceiver {
             Err(e) => panic!("Failed to bind to the heartbeat socket! ERROR: {}", e),
         };
 
-        if let Err(e) = socket.connect(addr).await {
+        if let Err(_) = socket.connect(addr).await {
             panic!("Failed to connect to '{addr}'!");
         }
         info!(tag: "heartbeat_task", "Subscribing to the sender at '{addr}'....");
