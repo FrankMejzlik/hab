@@ -47,6 +47,8 @@ tail -f ./env/sender/logs/registrator_task.log
 tail -f ./env/sender/logs/subscribers.log
 # The UTF-8 repre of broadcasted messages
 tail -f ./env/sender/logs/broadcasted.log
+# The state of key layers
+tail -f ./env/sender/logs/block_signer.log
 ```
 
 ### Receiver

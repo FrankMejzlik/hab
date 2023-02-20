@@ -2,6 +2,9 @@
 //! Module for broadcasting the signed data packets.
 //!
 
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::fmt::Formatter;
 use std::hash::Hash;
 use std::marker::PhantomData;
 // ---
@@ -9,7 +12,7 @@ use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use core::fmt::Debug;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::de::Deserializer;
@@ -47,6 +50,21 @@ struct KeyCont<const T: usize, const N: usize> {
     signs: usize,
     #[allow(dead_code)]
     lifetime: usize,
+}
+
+impl<const T: usize, const N: usize> Display for KeyCont<T, N> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            format!(
+                "{} -> | {} | {} |",
+                utils::shorten(&utils::to_hex(&self.key.public.data), 10),
+                utils::unix_ts_to_string(self.last_cerified),
+                self.lifetime - self.signs,
+            )
+        )
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -97,6 +115,20 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
     }
 }
 
+impl<const T: usize, const N: usize> Display for KeyLayers<T, N> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let mut res = String::new();
+
+        for (l_idx, layer) in self.data.iter().enumerate() {
+            for kc in layer.iter() {
+                res.push_str(&format!("\t[{}]\t{}\n", l_idx, kc))
+            }
+        }
+
+        write!(f, "{}", res)
+    }
+}
+
 #[derive(Debug)]
 pub struct BlockSigner<
     const K: usize,
@@ -111,7 +143,7 @@ pub struct BlockSigner<
 > {
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
-    pks: HashSet<(UnixTimestamp, u8, <Self as BlockSignerTrait>::PublicKey)>,
+    pks: HashMap<<Self as BlockSignerTrait>::PublicKey, (UnixTimestamp, u8)>,
     _x: PhantomData<(MsgHashFn, TreeHashFn)>,
 }
 
@@ -131,9 +163,19 @@ impl<
     fn dump_pks(&self) -> String {
         let mut res = String::new();
         res.push_str("=== RECEIVER: Public keys ===\n");
-        for (_, _, pk) in self.pks.iter() {
-            res.push_str(&format!("\t{}", pk));
+        for (pk, (ts, level)) in self.pks.iter() {
+            res.push_str(&format!(
+                "\t[{level}]\t{pk} -> | {} |\n",
+                utils::unix_ts_to_string(*ts)
+            ));
         }
+        res
+    }
+
+    fn dump_layers(&self) -> String {
+        let mut res = String::new();
+        res.push_str("=== SENDER: Secret & public keys ===\n");
+        res.push_str(&format!("{}", self.layers));
         res
     }
 
@@ -193,7 +235,7 @@ impl<
             let layers =
                 bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
             let pks = bincode::deserialize::<
-                HashSet<(UnixTimestamp, u8, <Self as BlockSignerTrait>::PublicKey)>,
+                HashMap<<Self as BlockSignerTrait>::PublicKey, (UnixTimestamp, u8)>,
             >(&pks_bytes)
             .expect("!");
 
@@ -233,7 +275,7 @@ impl<
         let layers =
             bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
         let pks = bincode::deserialize::<
-            HashSet<(UnixTimestamp, u8, <Self as BlockSignerTrait>::PublicKey)>,
+            HashMap<<Self as BlockSignerTrait>::PublicKey, (UnixTimestamp, u8)>,
         >(&pks_bytes)
         .expect("!");
 
@@ -250,13 +292,16 @@ impl<
         &SecretKey<T, TREE_HASH_SIZE>,
         Vec<KeyWrapper<PublicKey<TREE_HASH_SIZE>>>,
     ) {
-        // TODO: Implement
-        let pks = vec![
-            KeyWrapper::new(self.layers.data[0][0].key.public.clone(), 0),
-            KeyWrapper::new(PublicKey::new(&[0_u8; TREE_HASH_SIZE]), 1),
-        ];
+        let mut pks = vec![];
+        for (l_idx, layer) in self.layers.data.iter().enumerate() {
+            for k in layer.iter() {
+                pks.push(KeyWrapper::new(k.key.public.clone(), l_idx as u8));
+            }
+        }
 
         // TODO: Implement
+
+        debug!(tag: "block_signer", "{}", self.dump_layers());
         (&self.layers.data[0][0].key.secret, pks)
     }
 }
@@ -306,16 +351,19 @@ impl<
     /// Constructs and initializes a block signer with the given parameters.
     fn new(params: BlockSignerParams) -> Self {
         let mut rng = CsPrng::seed_from_u64(params.seed);
-        let mut layers = KeyLayers::new(1);
+        let mut layers = KeyLayers::new(3);
 
-        let keypair = Self::Signer::gen_key_pair(&mut rng);
-
-        layers.insert(0, keypair);
+        layers.insert(0, Self::Signer::gen_key_pair(&mut rng));
+        layers.insert(0, Self::Signer::gen_key_pair(&mut rng));
+        layers.insert(1, Self::Signer::gen_key_pair(&mut rng));
+        layers.insert(1, Self::Signer::gen_key_pair(&mut rng));
+        layers.insert(2, Self::Signer::gen_key_pair(&mut rng));
+        layers.insert(2, Self::Signer::gen_key_pair(&mut rng));
 
         let mut new_inst = BlockSigner {
             rng,
             layers,
-            pks: HashSet::new(),
+            pks: HashMap::new(),
             _x: PhantomData,
         };
 
@@ -323,6 +371,8 @@ impl<
             true => info!("The existing ID was loaded."),
             false => info!("No existing ID found, creating a new one."),
         };
+
+        debug!(tag: "block_signer", "{}", new_inst.dump_layers());
         new_inst
     }
 
@@ -393,17 +443,13 @@ impl<
 
     /// Constructs and initializes a block signer with the given parameters.
     fn new(params: BlockSignerParams) -> Self {
-        let mut rng = CsPrng::seed_from_u64(params.seed);
-        let mut layers = KeyLayers::new(1);
-
-        let keypair = Self::Signer::gen_key_pair(&mut rng);
-
-        layers.insert(0, keypair);
+        let rng = CsPrng::seed_from_u64(params.seed);
+        let layers = KeyLayers::new(1);
 
         let mut new_inst = BlockSigner {
             rng,
             layers,
-            pks: HashSet::new(),
+            pks: HashMap::new(),
             _x: PhantomData,
         };
         match Self::load_state(&mut new_inst) {
@@ -440,11 +486,17 @@ impl<
             &block.pub_keys[config::DUMMY_KEY_IDX].key,
         );
 
-        let k = block.pub_keys.first().expect("!");
-        self.pks.insert((utils::unix_ts(), k.layer, k.key.clone()));
+        // Store all the certified public keys
+        for kw in block.pub_keys.iter() {
+            // If the key is not yet cached
+            if !self.pks.contains_key(&kw.key) {
+                // Store it
+                self.pks
+                    .insert(kw.key.clone(), (utils::unix_ts(), kw.layer));
+            }
+        }
 
         self.store_state();
-
         debug!(tag: "block_verifier", "{}", self.dump_pks());
 
         Ok((block.data, valid, hash_sign, hash_pks))

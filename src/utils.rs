@@ -5,6 +5,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 // ---
 use bitreader::BitReader;
+use chrono::{DateTime, Utc};
 use hex::{decode, encode};
 use log::debug;
 
@@ -96,6 +97,27 @@ pub fn binary_name() -> String {
         .next()
         .unwrap_or_default()
         .to_string()
+}
+
+pub fn shorten(string: &str, max_len: usize) -> String {
+    if string.len() <= max_len {
+        return string.to_string();
+    } else {
+        let mut res = String::new();
+        let half = (max_len + 2) / 2;
+        res.push_str(&string[..half]);
+        res.push_str("..");
+        res.push_str(&string[(string.len() - half)..]);
+        return res;
+    }
+}
+
+pub fn unix_ts_to_string(ts: UnixTimestamp) -> String {
+    let datetime = DateTime::<Utc>::from_utc(
+        chrono::NaiveDateTime::from_timestamp_opt((ts / 1000) as i64, 0).expect("!"),
+        Utc,
+    );
+    datetime.format("%d-%m-%Y %H:%M:%S").to_string()
 }
 
 #[cfg(test)]
