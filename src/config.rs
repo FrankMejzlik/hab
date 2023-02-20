@@ -28,7 +28,7 @@ pub const BUFFER_SIZE: usize = 1024;
 /// Size of the datagram we send over the UDP prorocol.
 pub const DATAGRAM_SIZE: usize = 512;
 /// List of logging tags that we use throuought the program.
-pub const USED_LOG_TAGS: &[&'static str] = &[
+pub const USED_LOG_TAGS: &[&str] = &[
     "output",
     "sender",
     "registrator_task",

@@ -23,7 +23,7 @@ use std::sync::{
 use std::thread;
 // ---
 use clap::Parser;
-use ctrlc;
+
 // ---
 use crate::common::{Args, ProgramMode};
 //use crate::diag_server::DiagServer;
@@ -57,10 +57,9 @@ fn run_sender(args: Args, running: Arc<AtomicBool>) {
 
     let mut sender = Sender::new(sender_params);
 
-    let output = match args.output {
-        Some(x) => Some(File::create(x).expect("File should be writable!")),
-        None => None,
-    };
+    let output = args
+        .output
+        .map(|x| File::create(x).expect("File should be writable!"));
 
     // Use the desired input (STDIN or the provided file)
     match args.input {
@@ -90,10 +89,9 @@ fn run_receiver(args: Args, running: Arc<AtomicBool>) {
 
     let mut receiver = Receiver::new(recv_params);
 
-    let input = match args.input {
-        Some(x) => Some(File::open(x).expect("File should be writable!")),
-        None => None,
-    };
+    let input = args
+        .input
+        .map(|x| File::open(x).expect("File should be writable!"));
 
     // Use the desired input (STDOUT or the provided file)
     match args.output {

@@ -430,7 +430,7 @@ mod tests {
         for l in leaves.iter() {
             debug!("\t=> {}", utils::to_hex(l));
         }
-        let mut exp_tree: Vec<Vec<[u8; BLOCK_SIZE]>> = vec![leaves.clone()];
+        let mut exp_tree: Vec<Vec<[u8; BLOCK_SIZE]>> = vec![leaves];
         // For each layer, h-2 -> 0
         for i in (0_usize..h - 1).rev() {
             println!("Layer {}:", i);

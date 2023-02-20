@@ -57,7 +57,7 @@ impl fmt::Display for FragmentedBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut str = String::new();
 
-        str.push_str("[");
+        str.push('[');
 
         for _ in 0..((self.data.len() + self.frag_size - 1) / self.frag_size) {
             str.push('o');
@@ -67,7 +67,7 @@ impl fmt::Display for FragmentedBlock {
             str.replace_range(m_i..&(m_i + 1), "x");
         }
 
-        str.push_str("]");
+        str.push(']');
 
         write!(f, "{}", str)
     }
@@ -134,12 +134,9 @@ impl FragmentedBlocks {
         let (_, _, payload_size) = common::get_datagram_sizes();
 
         // If a new hash has come
-        if !self.blocks.contains_key(&hash) {
-            self.blocks.insert(
-                hash,
-                FragmentedBlock::new(payload_size, num_fragments as usize),
-            );
-        };
+        self.blocks
+            .entry(hash)
+            .or_insert_with(|| FragmentedBlock::new(payload_size, num_fragments as usize));
 
         let record = self
             .blocks
@@ -246,7 +243,7 @@ impl NetReceiver {
             Err(e) => panic!("Failed to bind to the heartbeat socket! ERROR: {}", e),
         };
 
-        if let Err(_) = socket.connect(addr).await {
+        if socket.connect(addr).await.is_err() {
             panic!("Failed to connect to '{addr}'!");
         }
         info!(tag: "heartbeat_task", "Subscribing to the sender at '{addr}'....");

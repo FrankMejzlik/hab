@@ -101,14 +101,14 @@ pub fn binary_name() -> String {
 
 pub fn shorten(string: &str, max_len: usize) -> String {
     if string.len() <= max_len {
-        return string.to_string();
+        string.to_string()
     } else {
         let mut res = String::new();
         let half = (max_len + 2) / 2;
         res.push_str(&string[..half]);
         res.push_str("..");
         res.push_str(&string[(string.len() - half)..]);
-        return res;
+        res
     }
 }
 

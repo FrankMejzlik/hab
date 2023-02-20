@@ -50,13 +50,10 @@ impl<const T: usize, const N: usize> Display for KeyCont<T, N> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
             f,
-            "{}",
-            format!(
-                "{} -> | {} | {} |",
-                utils::shorten(&utils::to_hex(&self.key.public.data), 10),
-                utils::unix_ts_to_string(self.last_cerified),
-                self.lifetime - self.signs,
-            )
+            "{} -> | {} | {} |",
+            utils::shorten(&utils::to_hex(&self.key.public.data), 10),
+            utils::unix_ts_to_string(self.last_cerified),
+            self.lifetime - self.signs,
         )
     }
 }
@@ -303,6 +300,9 @@ impl<
         &SecretKey<T, TREE_HASH_SIZE>,
         Vec<KeyWrapper<PublicKey<TREE_HASH_SIZE>>>,
     ) {
+		// TODO: Detect the first sign to use only level 0
+		// TODO: Restrict level 0 to be used at maximum rate
+
         // Send all public keys
         let mut pks = vec![];
         for (l_idx, layer) in self.layers.data.iter().enumerate() {
@@ -318,6 +318,8 @@ impl<
             .expect("At least one key per layer must be there!");
         signing_key.signs += 1;
         signing_key.last_cerified = utils::unix_ts();
+
+		// TODO: Remove & replace keys
 
         (&signing_key.key.secret, pks)
     }
@@ -497,14 +499,14 @@ impl<
         let mut tmp2 = 0;
         for x in &block.signature.data {
             for y in x {
-                let h = xxh3_64(&y);
-                tmp2 = tmp2 ^ h;
+                let h = xxh3_64(y);
+                tmp2 ^= h;
             }
         }
 
         let mut tmp = 0;
         for pk in block.pub_keys.iter() {
-            tmp = tmp ^ xxh3_64(pk.key.data.as_ref());
+            tmp ^= xxh3_64(pk.key.data.as_ref());
         }
         let hash_pks = tmp;
         let hash_sign = tmp2;

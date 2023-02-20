@@ -146,9 +146,9 @@ impl<const N: usize, const K: usize, const TAUPLUS: usize> Display
         for (i, segment) in self.data.iter().enumerate() {
             for (j, s) in segment.iter().enumerate() {
                 if j == 0 {
-                    writeln!(f, "[SK_{}] => \t {}", i, utils::to_hex(&s))?;
+                    writeln!(f, "[SK_{}] => \t {}", i, utils::to_hex(s))?;
                 } else {
-                    writeln!(f, "\t[{:0>5}] => \t {}", j - 1, utils::to_hex(&s))?;
+                    writeln!(f, "\t[{:0>5}] => \t {}", j - 1, utils::to_hex(s))?;
                 }
             }
         }

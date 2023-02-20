@@ -182,7 +182,7 @@ pub fn setup_logger() -> Result<(), fern::InitError> {
 #[macro_export]
 macro_rules! trace {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use crate::config::LOGS_DIR;
+        use $crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Trace {
@@ -218,7 +218,7 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! debug {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use crate::config::LOGS_DIR;
+        use $crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Debug {
@@ -253,7 +253,7 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! info {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use crate::config::LOGS_DIR;
+        use $crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Info {
@@ -289,7 +289,7 @@ macro_rules! info {
 #[macro_export]
 macro_rules! warn {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use crate::config::LOGS_DIR;
+        use $crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Info {
@@ -325,7 +325,7 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! error {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use crate::config::LOGS_DIR;
+        use $crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Info {
@@ -366,10 +366,10 @@ pub static LOG_OUTPUT_COUNTER: AtomicUsize = AtomicUsize::new(0);
 #[macro_export]
 macro_rules! log_input {
     ($hash:expr, $data:expr) => {{
-        use crate::common::LOG_INPUT_COUNTER;
-        use crate::config::INPUT_DBG_DIR;
         use std::io::Write;
         use std::sync::atomic::Ordering;
+        use $crate::common::LOG_INPUT_COUNTER;
+        use $crate::config::INPUT_DBG_DIR;
 
         let mut log_file = std::fs::OpenOptions::new()
             .create(true)
@@ -390,10 +390,10 @@ macro_rules! log_input {
 #[macro_export]
 macro_rules! log_output {
     ($hash:expr, $data:expr) => {{
-        use crate::common::LOG_OUTPUT_COUNTER;
-        use crate::config::OUTPUT_DBG_DIR;
         use std::io::Write;
         use std::sync::atomic::Ordering;
+        use $crate::common::LOG_OUTPUT_COUNTER;
+        use $crate::config::OUTPUT_DBG_DIR;
 
         let mut log_file = std::fs::OpenOptions::new()
             .create(true)

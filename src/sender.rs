@@ -91,14 +91,14 @@ impl SenderTrait for Sender {
                     let mut tmp2 = 0;
                     for x in &x.signature.data {
                         for y in x {
-                            let h = xxh3_64(&y);
-                            tmp2 = tmp2 ^ h;
+                            let h = xxh3_64(y);
+                            tmp2 ^= h;
                         }
                     }
 
                     let mut tmp = 0;
                     for pk in x.pub_keys.iter() {
-                        tmp = tmp ^ xxh3_64(pk.key.data.as_ref());
+                        tmp ^= xxh3_64(pk.key.data.as_ref());
                     }
                     hash_pks = tmp;
                     hash_sign = tmp2;
@@ -122,10 +122,8 @@ impl SenderTrait for Sender {
                 self.params.running.store(false, Ordering::Release);
             }
             // OUTPUT: network
-            else {
-                if let Err(e) = self.net_sender.broadcast(&signed_data) {
-                    panic!("Failed to broadcast the data block!\nERROR: {:?}", e);
-                };
+            else if let Err(e) = self.net_sender.broadcast(&signed_data) {
+                panic!("Failed to broadcast the data block!\nERROR: {:?}", e);
             }
         }
     }

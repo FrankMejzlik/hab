@@ -85,7 +85,7 @@ impl NetSender {
 
         let mut res = vec![];
 
-        let hash = xxh3_64(&data);
+        let hash = xxh3_64(data);
         let hash = hash.to_le_bytes();
 
         let (_, _, payload_size) = common::get_datagram_sizes();
@@ -99,9 +99,9 @@ impl NetSender {
             let mut out_buffer: Vec<u8> = Vec::new();
             let mut out_cursor = std::io::Cursor::new(&mut out_buffer);
 
-            out_cursor.write(&hash).expect("!");
-            out_cursor.write(&dgram_idx.to_le_bytes()).expect("!");
-            out_cursor.write(&num_dgrams.to_le_bytes()).expect("!");
+            _ = out_cursor.write(&hash).expect("!");
+            _ = out_cursor.write(&dgram_idx.to_le_bytes()).expect("!");
+            _ = out_cursor.write(&num_dgrams.to_le_bytes()).expect("!");
 
             let mut lc = in_cursor.take(payload_size as u64);
             lc.read_to_end(&mut out_buffer).expect("!");
@@ -123,7 +123,7 @@ impl NetSender {
             for dgram in datagrams.iter() {
                 if let Err(e) = self
                     .rt
-                    .block_on(self.sender_socket.send_to(dgram, dest_sock_addr.clone()))
+                    .block_on(self.sender_socket.send_to(dgram, *dest_sock_addr))
                 {
                     warn!("Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
                 };
