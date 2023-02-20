@@ -50,7 +50,7 @@ impl<const T: usize, const N: usize> Display for KeyCont<T, N> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
             f,
-            "{} -> | {} | {} |",
+            "{} -> | {} | {:02} |",
             utils::shorten(&utils::to_hex(&self.key.public.data), 10),
             utils::unix_ts_to_string(self.last_cerified),
             self.lifetime - self.signs,
@@ -85,13 +85,20 @@ pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize> {
 
 #[derive(Serialize, Debug, Deserialize, PartialEq)]
 struct KeyLayers<const T: usize, const N: usize> {
+    /// The key containers in their layers (indices).
     data: Vec<Vec<KeyCont<T, N>>>,
+    /// True if the first sign is to come.
+    first_sign: bool,
+    /// The number of signs before the layer 0 can be used again
+    until_top: usize,
 }
 
 impl<const T: usize, const N: usize> KeyLayers<T, N> {
     pub fn new(depth: usize) -> Self {
         KeyLayers {
             data: vec![vec![]; depth],
+            first_sign: true,
+            until_top: 0,
         }
     }
 
@@ -105,6 +112,33 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
 
         self.data[level].push(key_cont);
     }
+
+    /// Takes the key from the provided layer, updates it and
+    /// returns it (also bool indicating that the new key is needed).
+    fn poll(&mut self, layer: usize) -> (KeyCont<T, N>, bool) {
+        let resulting_key;
+        {
+            let signing_key = self.data[layer]
+                .first_mut()
+                .expect("At least one key per layer must be there!");
+            signing_key.signs += 1;
+            signing_key.last_cerified = utils::unix_ts();
+            resulting_key = signing_key.clone();
+        }
+
+        // If this key just died
+        let died = if (resulting_key.lifetime - resulting_key.signs) <= 0 {
+            // Remove it
+            self.data[layer].remove(0);
+            // And indicate that we need a new one
+            true
+        } else {
+            false
+        };
+
+        self.first_sign = false;
+        (resulting_key, died)
+    }
 }
 
 impl<const T: usize, const N: usize> Display for KeyLayers<T, N> {
@@ -112,8 +146,13 @@ impl<const T: usize, const N: usize> Display for KeyLayers<T, N> {
         let mut res = String::new();
 
         for (l_idx, layer) in self.data.iter().enumerate() {
-            for kc in layer.iter() {
-                res.push_str(&format!("\t[{}]\t{}\n", l_idx, kc))
+            for (i, kc) in layer.iter().enumerate() {
+                res.push_str(&format!("[{}] {} ", l_idx, kc));
+                if i % 2 == 1 {
+                    res.push('\n')
+                } else {
+                    res.push_str("++ ");
+                }
             }
         }
 
@@ -297,11 +336,11 @@ impl<
     fn next_key(
         &mut self,
     ) -> (
-        &SecretKey<T, TREE_HASH_SIZE>,
+        SecretKey<T, TREE_HASH_SIZE>,
         Vec<KeyWrapper<PublicKey<TREE_HASH_SIZE>>>,
     ) {
-		// TODO: Detect the first sign to use only level 0
-		// TODO: Restrict level 0 to be used at maximum rate
+        // TODO: Detect the first sign to use only level 0
+        // TODO: Restrict level 0 to be used at maximum rate
 
         // Send all public keys
         let mut pks = vec![];
@@ -311,17 +350,27 @@ impl<
             }
         }
 
-        let sign_layer = self.distr.sample(&mut self.rng);
+        // Sample what layer to use
+        let sign_layer = if self.layers.first_sign {
+            debug!(tag:"sender", "The first ever sign is using layer 0");
+            0
+        } else {
+            self.distr.sample(&mut self.rng)
+        };
         debug!(tag:"sender", "Signing with key from the layer {sign_layer}...");
-        let signing_key = self.layers.data[sign_layer]
-            .first_mut()
-            .expect("At least one key per layer must be there!");
-        signing_key.signs += 1;
-        signing_key.last_cerified = utils::unix_ts();
 
-		// TODO: Remove & replace keys
+        // Poll the key
+        let (signing_key, died) = self.layers.poll(sign_layer);
 
-        (&signing_key.key.secret, pks)
+        // If needed generate a new key for the given layer
+        if died {
+            self.layers.insert(
+                sign_layer,
+                <Self as BlockSignerTrait>::Signer::gen_key_pair(&mut self.rng),
+            );
+        }
+
+        (signing_key.key.secret, pks)
     }
 }
 
@@ -412,7 +461,7 @@ impl<
 
     fn sign(&mut self, data: &[u8]) -> Result<Self::SignedBlock, Error> {
         let (sk, pub_keys) = self.next_key();
-        let signature = Self::Signer::sign(data, sk);
+        let signature = Self::Signer::sign(data, &sk);
         debug!(tag: "block_signer", "{}", self.dump_layers());
 
         self.store_state();
@@ -535,6 +584,7 @@ impl<
                         .insert(kw.key.clone(), (utils::unix_ts(), kw.layer));
                 }
             }
+            // TODO: Delete the oldest PKs if you have at least four of the same level
         }
 
         self.store_state();
