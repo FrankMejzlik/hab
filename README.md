@@ -1,22 +1,37 @@
 # HashSig
 
-A software for broadcasting & receiving the authenticated data stream using a protocol based on hash-based few time signatures.
+A toolkit for broadcasting or receiving authenticated data stream using a protocol built upon hash-based few-time signatures (e.g. HORST, PORST, SPHINCS).
 
-## Compile
+Current implementation uses the HORST signature scheme. This scheme is vulnarable against "weak words" attack and against adaptive attacks. Therefore we will also add an option to use PORST with SPHINCS-like extension to mitigate those vulnerabilites.
+
+It's important to note that the protocol itself is agnostic to few-time signature scheme used.
+
+## **Compile**
 
 ```sh
+# A debug build
 cargo build
-# For release version
+# A release build
 cargo build --release
+# Run unit tests
+cargo test
 ```
 
-## Running
+## **Running**
 
-Run sender & receiver in different terminal windows.
+Run sender & receiver in different terminal windows. These scripts run the sender & receiver inside the `env` directory (and in the `sender` & `receiver` subdirectories).
 
 ```sh
 ./scripts/run-sender.sh
 ./scripts/run-receiver.sh
+```
+
+### Permanent identities (state of the receiver & sender)
+
+Both sender & receiver modes store their state to `.identity` directory in the directory from which the binary is run. At the moment those are not encrypted (TODO using ~/.ssh/ keys) and the state writes are not fault-tolerant (TODO using speculative write & atomic `mv`).
+
+```sh
+./scripts/clear-ids.sh
 ```
 
 ### Running without a network via files only
@@ -32,9 +47,19 @@ Then you can verify the output with `receiver` mode and, if the signature is val
 ./target/debug/hashsig receiver "127.0.0.1:5555" --input ./env/data.signed --output ./env/data.output
 ```
 
-## Monitor
+## **Logging**
+
+For sake of readability we are using a "tagged" output to different files which you can monitor in real time (e.g. using `tail -f`). This effectively emulates a multiple terminals. Feel free to open multiple terminal (or use e.g. `tmux` to split into panes) and monitor whatever you're interested in.
+
+### `tmux` one-liners
+
+```sh
+# TODO: write a tmux one-liner that splits the panes for you and runs the belowmentioned commands to live monitor the logs
+```
 
 ### Sender
+
+#### **Supported logs:**
 
 ```sh
 # General log
@@ -52,6 +77,8 @@ tail -f ./env/sender/logs/block_signer.log
 ```
 
 ### Receiver
+
+#### **Supported logs**
 
 ```sh
 # General log

@@ -33,6 +33,7 @@ pub use crate::horst::{
 };
 use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait};
 use crate::utils;
+use crate::utils::unix_ts;
 use crate::utils::UnixTimestamp;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
@@ -292,6 +293,7 @@ impl<
         &SecretKey<T, TREE_HASH_SIZE>,
         Vec<KeyWrapper<PublicKey<TREE_HASH_SIZE>>>,
     ) {
+        // Send all public keys
         let mut pks = vec![];
         for (l_idx, layer) in self.layers.data.iter().enumerate() {
             for k in layer.iter() {
@@ -299,10 +301,14 @@ impl<
             }
         }
 
-        // TODO: Implement
+        let sign_layer = 0; //< Sample from distrib here
+        let signing_key = self.layers.data[sign_layer]
+            .first_mut()
+            .expect(("At least one key per layer must be there!"));
+        signing_key.signs += 1;
+        signing_key.last_cerified = utils::unix_ts();
 
-        debug!(tag: "block_signer", "{}", self.dump_layers());
-        (&self.layers.data[0][0].key.secret, pks)
+        (&signing_key.key.secret, pks)
     }
 }
 
@@ -378,8 +384,8 @@ impl<
 
     fn sign(&mut self, data: &[u8]) -> Result<Self::SignedBlock, Error> {
         let (sk, pub_keys) = self.next_key();
-
         let signature = Self::Signer::sign(data, sk);
+        debug!(tag: "block_signer", "{}", self.dump_layers());
 
         // --- sanity check ---
         assert!(Self::Signer::verify(
@@ -480,19 +486,29 @@ impl<
         let hash_pks = tmp;
         let hash_sign = tmp2;
 
-        let valid = Self::Signer::verify(
-            &block.data,
-            &block.signature,
-            &block.pub_keys[config::DUMMY_KEY_IDX].key,
-        );
+        // Try to verify with at least one already certified key
+        let mut valid = false;
+        for (pk, _) in self.pks.iter() {
+            let ok = Self::Signer::verify(&block.data, &block.signature, pk);
+            if ok {
+                valid = true;
+                break;
+            }
+        }
 
-        // Store all the certified public keys
-        for kw in block.pub_keys.iter() {
-            // If the key is not yet cached
-            if !self.pks.contains_key(&kw.key) {
-                // Store it
-                self.pks
-                    .insert(kw.key.clone(), (utils::unix_ts(), kw.layer));
+        // If the signature is valid (or the very first block received), we certify the PKs received
+        if valid || self.pks.is_empty() {
+            if self.pks.is_empty() {
+                info!(tag: "receiver", "(!) Accepting the first received block! (!)");
+            }
+            // Store all the certified public keys
+            for kw in block.pub_keys.iter() {
+                // If the key is not yet cached
+                if !self.pks.contains_key(&kw.key) {
+                    // Store it
+                    self.pks
+                        .insert(kw.key.clone(), (utils::unix_ts(), kw.layer));
+                }
             }
         }
 
