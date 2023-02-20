@@ -102,7 +102,7 @@ impl SenderTrait for Sender {
 
                     let mut tmp = 0;
                     for pk in x.pub_keys.iter() {
-                        tmp = tmp ^ xxh3_64(pk.data.as_ref());
+                        tmp = tmp ^ xxh3_64(pk.key.data.as_ref());
                     }
                     hash_pks = tmp;
                     hash_sign = tmp2;

@@ -29,6 +29,7 @@ pub use crate::horst::{
     HorstSignature as Signature,
 };
 use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait};
+use crate::utils;
 use crate::utils::UnixTimestamp;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
@@ -48,6 +49,17 @@ struct KeyCont<const T: usize, const N: usize> {
     lifetime: usize,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct KeyWrapper<Key> {
+    pub key: Key,
+    pub layer: u8,
+}
+impl<Key> KeyWrapper<Key> {
+    pub fn new(key: Key, layer: u8) -> Self {
+        KeyWrapper { key, layer }
+    }
+}
+
 /// Struct holding parameters for the sender.
 pub struct BlockSignerParams {
     pub seed: u64,
@@ -58,7 +70,7 @@ pub struct BlockSignerParams {
 pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize> {
     pub data: Vec<u8>,
     pub signature: Signature,
-    pub pub_keys: Vec<PublicKey>,
+    pub pub_keys: Vec<KeyWrapper<PublicKey>>,
 }
 
 #[derive(Serialize, Debug, Deserialize, PartialEq)]
@@ -99,7 +111,7 @@ pub struct BlockSigner<
 > {
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
-    pks: HashSet<<Self as BlockSignerTrait>::PublicKey>,
+    pks: HashSet<(UnixTimestamp, u8, <Self as BlockSignerTrait>::PublicKey)>,
     _x: PhantomData<(MsgHashFn, TreeHashFn)>,
 }
 
@@ -116,13 +128,13 @@ impl<
     >
     BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
-	fn dump_pks(&self) -> String {
-		let mut res = String::new();
-		res.push_str("=== RECEIVER: Public keys ===\n");
-		for pk in self.pks.iter() {
-			res.push_str(&format!("\t{}", pk));
-		}
-		res
+    fn dump_pks(&self) -> String {
+        let mut res = String::new();
+        res.push_str("=== RECEIVER: Public keys ===\n");
+        for (_, _, pk) in self.pks.iter() {
+            res.push_str(&format!("\t{}", pk));
+        }
+        res
     }
 
     fn store_state(&mut self) {
@@ -180,9 +192,10 @@ impl<
 
             let layers =
                 bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
-            let pks =
-                bincode::deserialize::<HashSet<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
-                    .expect("!");
+            let pks = bincode::deserialize::<
+                HashSet<(UnixTimestamp, u8, <Self as BlockSignerTrait>::PublicKey)>,
+            >(&pks_bytes)
+            .expect("!");
 
             assert_eq!(self.rng, rng);
             assert_eq!(self.layers, layers);
@@ -219,8 +232,10 @@ impl<
         let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
         let layers =
             bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
-        let pks = bincode::deserialize::<HashSet<<Self as BlockSignerTrait>::PublicKey>>(&pks_bytes)
-            .expect("!");
+        let pks = bincode::deserialize::<
+            HashSet<(UnixTimestamp, u8, <Self as BlockSignerTrait>::PublicKey)>,
+        >(&pks_bytes)
+        .expect("!");
 
         self.rng = rng;
         self.layers = layers;
@@ -233,12 +248,12 @@ impl<
         &mut self,
     ) -> (
         &SecretKey<T, TREE_HASH_SIZE>,
-        Vec<PublicKey<TREE_HASH_SIZE>>,
+        Vec<KeyWrapper<PublicKey<TREE_HASH_SIZE>>>,
     ) {
         // TODO: Implement
         let pks = vec![
-            self.layers.data[0][0].key.public.clone(),
-            PublicKey::new(&[0_u8; TREE_HASH_SIZE]),
+            KeyWrapper::new(self.layers.data[0][0].key.public.clone(), 0),
+            KeyWrapper::new(PublicKey::new(&[0_u8; TREE_HASH_SIZE]), 1),
         ];
 
         // TODO: Implement
@@ -385,19 +400,19 @@ impl<
 
         layers.insert(0, keypair);
 
-		let mut new_inst = BlockSigner {
+        let mut new_inst = BlockSigner {
             rng,
             layers,
             pks: HashSet::new(),
             _x: PhantomData,
         };
-		match Self::load_state(&mut new_inst) {
+        match Self::load_state(&mut new_inst) {
             true => info!("The existing ID was loaded."),
             false => info!("No existing ID found, creating a new one."),
         };
-		
-		debug!(tag: "block_verifier", "{}", new_inst.dump_pks());
-        new_inst        
+
+        debug!(tag: "block_verifier", "{}", new_inst.dump_pks());
+        new_inst
     }
 
     fn verify(&mut self, data: Vec<u8>) -> Result<(Vec<u8>, bool, u64, u64), Error> {
@@ -414,7 +429,7 @@ impl<
 
         let mut tmp = 0;
         for pk in block.pub_keys.iter() {
-            tmp = tmp ^ xxh3_64(pk.data.as_ref());
+            tmp = tmp ^ xxh3_64(pk.key.data.as_ref());
         }
         let hash_pks = tmp;
         let hash_sign = tmp2;
@@ -422,10 +437,11 @@ impl<
         let valid = Self::Signer::verify(
             &block.data,
             &block.signature,
-            &block.pub_keys[config::DUMMY_KEY_IDX],
+            &block.pub_keys[config::DUMMY_KEY_IDX].key,
         );
 
-		self.pks.insert(block.pub_keys.first().expect("!").to_owned());
+        let k = block.pub_keys.first().expect("!");
+        self.pks.insert((utils::unix_ts(), k.layer, k.key.clone()));
 
         self.store_state();
 
@@ -433,6 +449,4 @@ impl<
 
         Ok((block.data, valid, hash_sign, hash_pks))
     }
-
-    
 }

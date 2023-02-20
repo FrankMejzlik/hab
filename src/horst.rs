@@ -104,7 +104,7 @@ impl<const T: usize, const N: usize> Display for HorstSecretKey<T, N> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq,Eq,Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct HorstPublicKey<const N: usize> {
     pub data: Vec<u8>,
 }
@@ -118,10 +118,7 @@ impl<const N: usize> HorstPublicKey<N> {
 }
 impl<const N: usize> Display for HorstPublicKey<N> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        writeln!(
-            f,
-            "{}", utils::to_hex(&self.data)
-        )
+        writeln!(f, "{}", utils::to_hex(&self.data))
     }
 }
 
