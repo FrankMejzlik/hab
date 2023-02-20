@@ -23,6 +23,7 @@ use crate::{debug, error, info, log_input, trace, warn};
 #[derive(Debug)]
 pub struct SenderParams {
     pub seed: u64,
+    pub layers: usize,
     pub addr: String,
     pub running: Arc<AtomicBool>,
 }
@@ -36,14 +37,11 @@ pub struct Sender {
 
 impl Sender {
     pub fn new(params: SenderParams) -> Self {
-        let block_signer_params = BlockSignerParams { seed: params.seed };
+        let block_signer_params = BlockSignerParams {
+            seed: params.seed,
+            layers: params.layers,
+        };
         let signer = BlockSignerInst::new(block_signer_params);
-
-        if std::path::Path::new(&format!("{}/{}", config::ID_DIR, config::ID_CHECK_FILENAME))
-            .exists()
-        {
-            let act_dump = format!("{:#?}", signer);
-        }
 
         let net_sender_params = NetSenderParams {
             addr: params.addr.clone(),

@@ -33,7 +33,7 @@ pub struct Receiver {
 
 impl Receiver {
     pub fn new(params: ReceiverParams) -> Self {
-        let block_signer_params = BlockSignerParams { seed: 0 };
+        let block_signer_params = BlockSignerParams { seed: 0, layers: 0 };
         let verifier = BlockVerifierInst::new(block_signer_params);
 
         let net_recv_params = NetReceiverParams {

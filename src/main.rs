@@ -50,6 +50,7 @@ fn run_diag_server(_args: Args, running: Arc<AtomicBool>) {
 fn run_sender(args: Args, running: Arc<AtomicBool>) {
     let sender_params = SenderParams {
         seed: args.seed,
+        layers: args.layers,
         addr: args.addr,
         running,
     };

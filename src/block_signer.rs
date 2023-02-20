@@ -82,6 +82,7 @@ impl<Key> KeyWrapper<Key> {
 /// Struct holding parameters for the sender.
 pub struct BlockSignerParams {
     pub seed: u64,
+    pub layers: usize,
 }
 
 /// Struct holding a data to send with the signature and piggy-backed public keys.
@@ -246,13 +247,13 @@ impl<
         }
     }
 
-    fn load_state(&mut self) -> bool {
+    fn load_state() -> Option<Self> {
         let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
         debug!("Trying to load the state from '{filepath}'...");
         let mut file = match File::open(&filepath) {
             Ok(x) => x,
             Err(_) => {
-                return false;
+                return None;
             }
         };
 
@@ -280,11 +281,13 @@ impl<
         >(&pks_bytes)
         .expect("!");
 
-        self.rng = rng;
-        self.layers = layers;
-        self.pks = pks;
         info!("An existing ID loaded from '{}'.", filepath);
-        true
+        Some(Self {
+            rng,
+            layers,
+            pks,
+            _x: PhantomData,
+        })
     }
 
     fn next_key(
@@ -356,26 +359,34 @@ impl<
 
     /// Constructs and initializes a block signer with the given parameters.
     fn new(params: BlockSignerParams) -> Self {
+        // Try to load the identity from the disk
+        match Self::load_state() {
+            Some(x) => {
+                info!(tag: "sender", "The existing ID was loaded.");
+                debug!(tag: "block_signer", "{}", x.dump_layers());
+                return x;
+            }
+            None => info!(tag: "sender", "No existing ID found, creating a new one."),
+        };
+        info!(tag: "sender",
+            "Creating new `BlockSigner` with seed {} and {} layers of keys.",
+            params.seed, params.layers
+        );
+
+        // Initially populate the layers with keys
         let mut rng = CsPrng::seed_from_u64(params.seed);
-        let mut layers = KeyLayers::new(3);
+        let mut layers = KeyLayers::new(params.layers);
+        for l_idx in 0..params.layers {
+            // Two key at all times on all layers
+            layers.insert(l_idx, Self::Signer::gen_key_pair(&mut rng));
+            layers.insert(l_idx, Self::Signer::gen_key_pair(&mut rng));
+        }
 
-        layers.insert(0, Self::Signer::gen_key_pair(&mut rng));
-        layers.insert(0, Self::Signer::gen_key_pair(&mut rng));
-        layers.insert(1, Self::Signer::gen_key_pair(&mut rng));
-        layers.insert(1, Self::Signer::gen_key_pair(&mut rng));
-        layers.insert(2, Self::Signer::gen_key_pair(&mut rng));
-        layers.insert(2, Self::Signer::gen_key_pair(&mut rng));
-
-        let mut new_inst = BlockSigner {
+        let new_inst = BlockSigner {
             rng,
             layers,
             pks: HashMap::new(),
             _x: PhantomData,
-        };
-
-        match Self::load_state(&mut new_inst) {
-            true => info!("The existing ID was loaded."),
-            false => info!("No existing ID found, creating a new one."),
         };
 
         debug!(tag: "block_signer", "{}", new_inst.dump_layers());
@@ -448,19 +459,23 @@ impl<
     type BlockVerifierParams = BlockSignerParams;
 
     /// Constructs and initializes a block signer with the given parameters.
-    fn new(params: BlockSignerParams) -> Self {
-        let rng = CsPrng::seed_from_u64(params.seed);
-        let layers = KeyLayers::new(1);
+    fn new(_params: BlockSignerParams) -> Self {
+        // Try to load the identity from the disk
+        match Self::load_state() {
+            Some(x) => {
+                info!(tag: "receiver", "The existing ID was loaded.");
+                debug!(tag: "block_verifier", "{}", x.dump_layers());
+                return x;
+            }
+            None => info!(tag: "receiver", "No existing ID found, creating a new one."),
+        };
+        info!(tag: "receiver", "Creating new `BlockVerifier`.");
 
-        let mut new_inst = BlockSigner {
-            rng,
-            layers,
+        let new_inst = BlockSigner {
+            rng: CsPrng::seed_from_u64(0), //< Not used
+            layers: KeyLayers::new(0),     //< Not used
             pks: HashMap::new(),
             _x: PhantomData,
-        };
-        match Self::load_state(&mut new_inst) {
-            true => info!("The existing ID was loaded."),
-            false => info!("No existing ID found, creating a new one."),
         };
 
         debug!(tag: "block_verifier", "{}", new_inst.dump_pks());

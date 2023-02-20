@@ -127,12 +127,15 @@ pub enum ProgramMode {
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
+    // --- required ---
     /// What mode to launch the program in.
     #[clap(value_enum)]
     pub mode: ProgramMode,
     /// The address of the sender.
     #[clap()]
     pub addr: String,
+
+    // --- optional ---
     /// Seed used for the CSPRNG.
     #[clap(short, long, default_value_t = 42)]
     pub seed: u64,
@@ -142,6 +145,9 @@ pub struct Args {
     /// The output source file (if none, STDOUT for receiver, network for sender)
     #[clap(short, long)]
     pub output: Option<String>,
+    /// A desired number of key layers to use (for sender only)
+    #[clap(long, default_value_t = 8)]
+    pub layers: usize,
 }
 
 ///
