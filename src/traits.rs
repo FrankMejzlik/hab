@@ -53,7 +53,7 @@ pub trait BlockSignerTrait {
     type SignedBlock;
 
     fn new(params: Self::BlockSignerParams) -> Self;
-    fn sign(&mut self, data: &[u8]) -> Result<Self::SignedBlock, Self::Error>;
+    fn sign(&mut self, data: Vec<u8>) -> Result<Self::SignedBlock, Self::Error>;
 }
 
 ///

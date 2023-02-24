@@ -86,7 +86,10 @@ impl SenderTrait for Sender {
 
             let hash_sign;
             let hash_pks;
-            let signed_data = match self.signer.sign(&data) {
+			let hash_input = xxh3_64(&data);
+			let input_string = String::from_utf8_lossy(&data).to_string();
+
+            let signed_data = match self.signer.sign(data) {
                 Ok(x) => {
                     let mut tmp2 = 0;
                     for x in &x.signature.data {
@@ -112,8 +115,8 @@ impl SenderTrait for Sender {
             trace!(tag: "sender", "\tBroadcasting {} bytes with hash '{hash}'...", signed_data.len());
             log_input!(hash, &signed_data);
 
-            let hash_whole = xxh3_64(&data) ^ hash_sign ^ hash_pks;
-            trace!(tag: "sender", "[{hash_whole}] {}", String::from_utf8_lossy(&data));
+            let hash_whole = hash_input ^ hash_sign ^ hash_pks;
+            trace!(tag: "sender", "[{hash_whole}] {}", input_string);
 
             // OUTPUT: file
             if let Some(ref mut x) = output {

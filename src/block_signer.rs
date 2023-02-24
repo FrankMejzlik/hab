@@ -91,6 +91,8 @@ struct KeyLayers<const T: usize, const N: usize> {
     first_sign: bool,
     /// The number of signs before the layer 0 can be used again
     until_top: usize,
+    /// A sequence number of the next block to sign.
+    next_seq: u64,
 }
 
 impl<const T: usize, const N: usize> KeyLayers<T, N> {
@@ -99,6 +101,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
             data: vec![vec![]; depth],
             first_sign: true,
             until_top: 0,
+            next_seq: 0,
         }
     }
 
@@ -494,15 +497,20 @@ impl<
         new_inst
     }
 
-    fn sign(&mut self, data: &[u8]) -> Result<Self::SignedBlock, Error> {
+    fn sign(&mut self, data: Vec<u8>) -> Result<Self::SignedBlock, Error> {
         let (sk, pub_keys) = self.next_key();
-        let signature = Self::Signer::sign(data, &sk);
+
+        // Append the piggy-backed pubkeys to the payload
+        let mut data_to_sign = data.clone();
+		data_to_sign.append(&mut bincode::serialize(&pub_keys).expect("Should be serializable!"));
+
+        let signature = Self::Signer::sign(&data_to_sign, &sk);
         debug!(tag: "block_signer", "{}", self.dump_layers());
 
         self.store_state();
 
         Ok(SignedBlock {
-            data: data.to_vec(),
+            data: data,
             signature,
             pub_keys,
         })
@@ -595,10 +603,14 @@ impl<
         let hash_pks = tmp;
         let hash_sign = tmp2;
 
+
+		let mut to_verify = block.data.clone();
+		to_verify.append(&mut bincode::serialize(&block.pub_keys).expect("Should be serializable!"));
+
         // Try to verify with at least one already certified key
         let mut valid = false;
         for (pk, _) in self.pks.iter() {
-            let ok = Self::Signer::verify(&block.data, &block.signature, pk);
+            let ok = Self::Signer::verify(&to_verify, &block.signature, pk);
             if ok {
                 valid = true;
                 break;
