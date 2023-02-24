@@ -2,6 +2,8 @@
 //! General static config file where you can tune the desired protocol paramters.
 //!
 
+use std::time::Duration;
+
 // ---
 use cfg_if::cfg_if;
 use rand_chacha::ChaCha20Rng;
@@ -27,6 +29,9 @@ pub const SUBSCRIBER_LIFETIME: u128 = 10_000;
 pub const BUFFER_SIZE: usize = 1024;
 /// Size of the datagram we send over the UDP prorocol.
 pub const DATAGRAM_SIZE: usize = 512;
+/// A maximum number of keys per layer stored at the receiver.
+pub const MAX_PKS: usize = 3;
+pub const SIM_INPUT_PERIOD: Duration = Duration::from_millis(500);
 /// List of logging tags that we use throuought the program.
 pub const USED_LOG_TAGS: &[&str] = &[
     "output",

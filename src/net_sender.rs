@@ -11,13 +11,15 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 // ---
 use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 use xxhash_rust::xxh3::xxh3_64;
 // ---
 use crate::common;
-use crate::common::SubscribersMapArc;
+use crate::common::UnixTimestamp;
 use crate::config;
 use crate::utils;
 #[allow(unused_imports)]
@@ -43,14 +45,14 @@ pub struct NetSender {
     /// A socked used for sending the data to the subscribers.
     sender_socket: UdpSocket,
     /// A table of the subscribed receivers with the UNIX timestamp of the current lifetime.
-    subscribers: SubscribersMapArc,
+    subscribers: Subscribers,
 }
 
 impl NetSender {
     pub fn new(params: NetSenderParams) -> Self {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
-        let subscribers = Arc::new(Mutex::new(BTreeMap::new()));
+        let subscribers = Subscribers::new();
 
         // Spawn the task that will accept the receiver heartbeats
         rt.spawn(Self::registrator_task(
@@ -113,27 +115,46 @@ impl NetSender {
     }
     // ---
 
-    pub fn broadcast(&self, data: &[u8]) -> Result<(), NetSenderError> {
-        let subs_guard = self.subscribers.lock().expect("Should be lockable!");
+    pub fn broadcast(&mut self, data: &[u8]) -> Result<(), NetSenderError> {
+        let mut dead_subs = vec![];
+        {
+            let subs_guard = self.subscribers.0.lock().expect("Should be lockable!");
 
-        let datagrams = Self::split_to_datagrams(data);
+            let datagrams = Self::split_to_datagrams(data);
 
-        for (dest_sock_addr, _valid_until) in subs_guard.iter() {
-            debug!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
-            for dgram in datagrams.iter() {
-                if let Err(e) = self
-                    .rt
-                    .block_on(self.sender_socket.send_to(dgram, *dest_sock_addr))
-                {
-                    warn!("Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
-                };
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Should be positive.")
+                .as_millis();
+            for (dest_sock_addr, valid_until) in subs_guard.iter() {
+                // If the subscriber is dead already
+                if *valid_until < now {
+                    dead_subs.push(*dest_sock_addr);
+                    continue;
+                }
+
+                trace!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
+                for dgram in datagrams.iter() {
+                    if let Err(e) = self
+                        .rt
+                        .block_on(self.sender_socket.send_to(dgram, *dest_sock_addr))
+                    {
+                        warn!("Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
+                    };
+                }
             }
+        }
+
+        // Remove the dead subscribers
+        for dead_sub in dead_subs {
+            self.subscribers.remove(&dead_sub);
+            debug!(tag:"sender", "Deleted the dead subscriber '{dead_sub}'.");
         }
 
         Ok(())
     }
 
-    async fn registrator_task(addr: String, running: Arc<AtomicBool>, subs: SubscribersMapArc) {
+    async fn registrator_task(addr: String, running: Arc<AtomicBool>, mut subs: Subscribers) {
         let addr = match SocketAddrV4::from_str(&addr) {
             Ok(x) => x,
             Err(e) => panic!("Failed to parse the address '{addr}! ERROR: {e}'"),
@@ -166,12 +187,35 @@ impl NetSender {
             let recv_socket = SocketAddr::new(peer.ip(), recv_port);
 
             // Insert/update this subscriber
-            let mut subs_guard = subs.lock().expect("Should be lockable!");
-            subs_guard.insert(recv_socket, utils::unix_ts() + config::SUBSCRIBER_LIFETIME);
-            debug!(tag: "subscribers", "SUBSCRIBERS: {subs_guard:#?}");
+            subs.insert(recv_socket);
 
             debug!(tag: "registrator_task", "Accepted a heartbeat from '{peer}' listening for data at port {recv_port}.");
         }
+    }
+}
+
+///
+/// Structure representing a shared table of active subscribers that want to receive a stream of data.
+/// Cloning this structure you're creating new owning reference to the table itself.
+///
+#[derive(Debug, Clone)]
+struct Subscribers(Arc<Mutex<BTreeMap<SocketAddr, UnixTimestamp>>>);
+
+impl Subscribers {
+    pub fn new() -> Self {
+        Subscribers(Arc::new(Mutex::new(BTreeMap::new())))
+    }
+
+    pub fn insert(&mut self, sub_sock: SocketAddr) -> Option<UnixTimestamp> {
+        let mut subs_guard = self.0.lock().expect("Should be lockable!");
+        let res = subs_guard.insert(sub_sock, utils::unix_ts() + config::SUBSCRIBER_LIFETIME);
+        debug!(tag: "subscribers", "SUBSCRIBERS: {subs_guard:#?}");
+        res
+    }
+    pub fn remove(&mut self, sub_sock: &SocketAddr) {
+        let mut subs_guard = self.0.lock().expect("Should be lockable!");
+        subs_guard.remove(sub_sock);
+        debug!(tag: "subscribers", "SUBSCRIBERS: {subs_guard:#?}");
     }
 }
 

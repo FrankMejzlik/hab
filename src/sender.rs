@@ -6,12 +6,12 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 // ---
 use crate::block_signer::BlockSignerParams;
 use chrono::Local;
 use xxhash_rust::xxh3::xxh3_64;
 // ---
+use crate::config;
 use crate::config::BlockSignerInst;
 use crate::net_sender::{NetSender, NetSenderParams};
 use crate::traits::{BlockSignerTrait, SenderTrait};
@@ -61,7 +61,7 @@ impl Sender {
         #[cfg(feature = "simulate_stdin")]
         {
             // We simulate periodic data coming via input
-            thread::sleep(Duration::from_secs(5));
+            thread::sleep(config::SIM_INPUT_PERIOD);
             let msg = Local::now().format("%d-%m-%Y %H:%M:%S").to_string();
             input_bytes = msg.into_bytes();
         }
@@ -109,11 +109,11 @@ impl SenderTrait for Sender {
 
             // Debug log the input signed block
             let hash = xxh3_64(&signed_data);
-            debug!(tag: "sender", "\tBroadcasting {} bytes with hash '{hash}'...", signed_data.len());
+            trace!(tag: "sender", "\tBroadcasting {} bytes with hash '{hash}'...", signed_data.len());
             log_input!(hash, &signed_data);
 
             let hash_whole = xxh3_64(&data) ^ hash_sign ^ hash_pks;
-            debug!(tag: "sender", "[{hash_whole}] {}", String::from_utf8_lossy(&data));
+            trace!(tag: "sender", "[{hash_whole}] {}", String::from_utf8_lossy(&data));
 
             // OUTPUT: file
             if let Some(ref mut x) = output {

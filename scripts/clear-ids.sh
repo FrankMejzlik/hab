@@ -9,3 +9,4 @@ echo "Clearing identities..."
 cd env/
 rm ./sender/.identity/*
 rm ./receiver/.identity/*
+rm ./receiver2/.identity/*

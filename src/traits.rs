@@ -120,7 +120,7 @@ pub trait NetworkSenderTrait {
     ///
     /// Sends the provided data to the currently subscribed receivers.
     ///
-    fn broadcast(&self, data: &[u8]) -> Result<(), Self::Error>;
+    fn broadcast(&mut self, data: &[u8]) -> Result<(), Self::Error>;
 }
 
 pub trait NetworkReceiverTrait {

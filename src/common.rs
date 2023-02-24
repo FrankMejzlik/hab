@@ -3,13 +3,10 @@
 //!
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt;
 use std::mem::size_of;
-use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
-use std::sync::{Arc, Mutex};
 // ---
 use clap::Parser;
 use rand::{distributions::Distribution, Rng};
@@ -21,7 +18,6 @@ use crate::utils;
 // Usefull type aliases
 //
 pub type UnixTimestamp = u128;
-pub type SubscribersMapArc = Arc<Mutex<BTreeMap<SocketAddr, UnixTimestamp>>>;
 pub type PortNumber = u16;
 pub type DgramHash = u64;
 pub type DgramIdx = u32;

@@ -174,6 +174,7 @@ pub struct BlockSigner<
 > {
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
+    // TODO: Make this custom struct
     pks: HashMap<<Self as BlockSignerTrait>::PublicKey, (UnixTimestamp, u8)>,
     distr: DiscreteDistribution,
     _x: PhantomData<(MsgHashFn, TreeHashFn)>,
@@ -192,6 +193,9 @@ impl<
     >
     BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
+    ///
+    /// Pretty-prints the structure holding public keys.
+    ///
     fn dump_pks(&self) -> String {
         let mut res = String::new();
         res.push_str("=== RECEIVER: Public keys ===\n");
@@ -204,11 +208,42 @@ impl<
         res
     }
 
+    ///
+    /// Pretty-prints the structure holding private keys for signing.
+    ///
     fn dump_layers(&self) -> String {
         let mut res = String::new();
         res.push_str("=== SENDER: Secret & public keys ===\n");
         res.push_str(&format!("{}", self.layers));
         res
+    }
+
+    ///
+    /// Searches the provided layer if there is more than provided keys and deletes the ones
+    /// with the earliest timestamp.
+    ///
+    fn prune_pks(&mut self, max_per_layer: usize) {
+        // Copy all key-timestamp pairs from the given layer
+        let mut from_layer = vec![];
+        for (k, (ts, level)) in self.pks.iter() {
+            let missing = std::cmp::max(0, (*level as i64 + 1) - from_layer.len() as i64);
+            for _ in 0..missing {
+                from_layer.push(vec![]);
+            }
+
+            from_layer[*level as usize].push((k.clone(), ts.clone()));
+        }
+
+        for layer_items in from_layer.iter_mut() {
+            // Sort them by timestamp
+            layer_items.sort_by_key(|x| x.1);
+
+            // Remove the excessive keys
+            for i in 0..std::cmp::max(0, layer_items.len() as i32 - max_per_layer as i32) as usize {
+                let key = &layer_items[i].0;
+                self.pks.remove(key);
+            }
+        }
     }
 
     fn store_state(&mut self) {
@@ -585,6 +620,7 @@ impl<
                 }
             }
             // TODO: Delete the oldest PKs if you have at least four of the same level
+            self.prune_pks(config::MAX_PKS);
         }
 
         self.store_state();
