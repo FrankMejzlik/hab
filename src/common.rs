@@ -3,12 +3,12 @@
 //!
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::error::Error as StdError;
 use std::fmt;
 use std::mem::size_of;
 use std::sync::atomic::AtomicUsize;
 // ---
-use clap::Parser;
 use rand::{distributions::Distribution, Rng};
 // ---
 use crate::config;
@@ -27,6 +27,29 @@ pub fn get_datagram_sizes() -> (usize, usize, usize) {
     let payload_size = config::DATAGRAM_SIZE - header_size;
 
     (config::DATAGRAM_SIZE, header_size, payload_size)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SenderIdentity {
+	pub id: u64,
+}
+
+impl SenderIdentity {
+	pub fn new(id: u64) -> Self {
+		SenderIdentity { id }
+	}
+}
+
+pub struct ReceivedBlock {
+	pub data: Vec<u8>,
+	pub sender: SenderIdentity,
+	pub sender_merge: HashSet<SenderIdentity>
+}
+
+impl ReceivedBlock {
+	pub fn new(data: Vec<u8>, sender: SenderIdentity, sender_merge: HashSet<SenderIdentity>) -> Self {
+		ReceivedBlock { data, sender, sender_merge }
+	}
 }
 
 ///
@@ -106,69 +129,6 @@ impl StdError for Error {
     }
 }
 
-// ***
-// The clap config for command line arguments.
-// ***
-
-/// Modes in which the progarm can operate.
-#[derive(clap::ValueEnum, Clone, Debug)]
-pub enum ProgramMode {
-    /// The broadcaster of the data.
-    Sender,
-    /// The subscriber to the broadcasters.
-    Receiver,
-}
-
-/// Define the CLI.
-#[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
-pub struct Args {
-    // --- required ---
-    /// What mode to launch the program in.
-    #[clap(value_enum)]
-    pub mode: ProgramMode,
-    /// The address of the sender.
-    #[clap()]
-    pub addr: String,
-
-    // --- optional ---
-    /// Seed used for the CSPRNG.
-    #[clap(short, long, default_value_t = 42)]
-    pub seed: u64,
-    /// The input source file (if none, STDIN for sender, network for receiver)
-    #[clap(short, long)]
-    pub input: Option<String>,
-    /// The output source file (if none, STDOUT for receiver, network for sender)
-    #[clap(short, long)]
-    pub output: Option<String>,
-    /// A desired number of key layers to use (for sender only)
-    #[clap(long, default_value_t = 8)]
-    pub layers: usize,
-}
-
-///
-/// Setups the logger so it ignores the debug & trace logs in the third-party libs.
-///
-pub fn setup_logger() -> Result<(), fern::InitError> {
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "[{}][{}] {}",
-                //chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                chrono::Local::now().format("%H:%M:%S"),
-                record.level(),
-                message
-            ))
-        })
-        // Disable all by default
-        .level(log::LevelFilter::Warn)
-        // Allow for this module
-        .level_for(utils::binary_name(), log::LevelFilter::Trace)
-        //.chain(std::io::stdout())
-        .chain(fern::log_file(format!("{}/output.log", config::LOGS_DIR))?)
-        .apply()?;
-    Ok(())
-}
 
 ///
 /// Wrapper around the standard logging macros to accept also tag and log the messages
@@ -178,7 +138,7 @@ pub fn setup_logger() -> Result<(), fern::InitError> {
 #[macro_export]
 macro_rules! trace {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use $crate::config::LOGS_DIR;
+        use crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Trace {
@@ -214,7 +174,7 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! debug {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use $crate::config::LOGS_DIR;
+        use crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Debug {
@@ -285,7 +245,7 @@ macro_rules! info {
 #[macro_export]
 macro_rules! warn {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use $crate::config::LOGS_DIR;
+        use crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Info {
@@ -321,7 +281,7 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! error {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use $crate::config::LOGS_DIR;
+        use crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Info {

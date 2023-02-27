@@ -83,6 +83,15 @@ pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize> {
     pub pub_keys: Vec<KeyWrapper<PublicKey>>,
 }
 
+impl<Signature: Serialize, PublicKey: Serialize> SignedBlock<Signature, PublicKey> {
+    pub fn hash(&self) -> u64 {
+        let hash_data = xxh3_64(&self.data);
+        let hash_signature = xxh3_64(&bincode::serialize(&self.signature).expect("Should be serializable!"));
+		let hash_pubkeys = xxh3_64(&bincode::serialize(&self.pub_keys).expect("Should be serializable!"));
+        hash_data ^ hash_signature ^ hash_pubkeys
+    }
+}
+
 #[derive(Serialize, Debug, Deserialize, PartialEq)]
 struct KeyLayers<const T: usize, const N: usize> {
     /// The key containers in their layers (indices).
@@ -502,7 +511,7 @@ impl<
 
         // Append the piggy-backed pubkeys to the payload
         let mut data_to_sign = data.clone();
-		data_to_sign.append(&mut bincode::serialize(&pub_keys).expect("Should be serializable!"));
+        data_to_sign.append(&mut bincode::serialize(&pub_keys).expect("Should be serializable!"));
 
         let signature = Self::Signer::sign(&data_to_sign, &sk);
         debug!(tag: "block_signer", "{}", self.dump_layers());
@@ -603,9 +612,9 @@ impl<
         let hash_pks = tmp;
         let hash_sign = tmp2;
 
-
-		let mut to_verify = block.data.clone();
-		to_verify.append(&mut bincode::serialize(&block.pub_keys).expect("Should be serializable!"));
+        let mut to_verify = block.data.clone();
+        to_verify
+            .append(&mut bincode::serialize(&block.pub_keys).expect("Should be serializable!"));
 
         // Try to verify with at least one already certified key
         let mut valid = false;

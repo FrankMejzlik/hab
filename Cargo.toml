@@ -11,10 +11,7 @@ clap = { version = "3.2", features = ["derive"] }
 sha3 = "0.10"
 rand_chacha = { version = "0.3.1", features=["serde1"]}
 rand_core = "0.6.4"
-log = { version = "0.4", features = [
-	"max_level_trace",
-	"release_max_level_info",
-] }
+log = { version = "0.4" }
 hex = "0.4"
 chrono = "0.4"
 fern = { version = "0.6" }

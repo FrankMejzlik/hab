@@ -8,6 +8,8 @@ use std::io::{Read, Write};
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
+// ---
+use crate::common::{ReceivedBlock, Error};
 
 ///
 /// Provides a high-level interface for broadcasting the signed data to the subscribed receivers.
@@ -16,7 +18,7 @@ use sha3::Digest;
 /// * `trait ReceiverTrait`
 ///
 pub trait SenderTrait {
-    fn run(&mut self, input: &mut dyn Read, output: Option<impl Write>);
+    fn broadcast(&mut self, data: Vec<u8>) -> Result<(), Error>;
 }
 
 ///
@@ -26,7 +28,7 @@ pub trait SenderTrait {
 /// * `trait SenderTrait`
 ///
 pub trait ReceiverTrait {
-    fn run(&mut self, output: &mut dyn Write, input: Option<impl Read>);
+    fn receive(&mut self) -> Result<ReceivedBlock, Error>;
 }
 
 ///
