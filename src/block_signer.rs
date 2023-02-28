@@ -272,7 +272,7 @@ impl<
             let layers_bytes = bincode::serialize(&self.layers).expect("!");
             let pks_bytes = bincode::serialize(&self.pks).expect("!");
             let distr_bytes = bincode::serialize(&self.distr).expect("!");
-            let config_bytes = bincode::serialize(&self.distr).expect("!");
+            let config_bytes = bincode::serialize(&self.config).expect("!");
 
             file.write_u64::<LittleEndian>(rng_bytes.len() as u64)
                 .expect("!");
@@ -350,9 +350,7 @@ impl<
         debug!("Trying to load the state from '{filepath}'...");
         let mut file = match File::open(filepath) {
             Ok(x) => x,
-            Err(_) => {
-                return None;
-            }
+            Err(_) => return None,
         };
 
         let rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
@@ -493,7 +491,9 @@ impl<
                 debug!(tag: "block_signer", "{}", x.dump_layers());
                 return x;
             }
-            None => info!(tag: "sender", "No existing ID found, creating a new one."),
+            None => {
+                info!(tag: "sender", "No existing ID found, creating a new one.");
+            }
         };
         info!(tag: "sender",
             "Creating new `BlockSigner` with seed {} and {} layers of keys.",

@@ -3,11 +3,11 @@
 //!
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::error::Error as StdError;
 use std::fmt;
 use std::mem::size_of;
 use std::sync::atomic::AtomicUsize;
-use std::{collections::HashSet, sync::RwLock};
 // ---
 use rand::{distributions::Distribution, Rng};
 // ---
@@ -20,10 +20,7 @@ pub type PortNumber = u16;
 pub type DgramHash = u64;
 pub type DgramIdx = u32;
 
-use lazy_static::lazy_static;
-lazy_static! {
-    pub static ref LOGS_DIR: RwLock<String> = RwLock::new(String::from("logs/"));
-}
+pub const LOGS_DIR: &str = "logs/";
 
 pub fn get_datagram_sizes(dgram_size: usize) -> (usize, usize, usize) {
     let header_size = size_of::<DgramHash>() + 2 * size_of::<DgramIdx>();
@@ -155,7 +152,7 @@ macro_rules! trace {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(format!("{}/{}.log", LOGS_DIR.read().expect("Should be lockable!"), $tag))
+                .open(format!("{}/{}.log", LOGS_DIR, $tag))
                 .unwrap();
 
 			let inner = format!($($arg)+);
@@ -191,7 +188,7 @@ macro_rules! debug {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(format!("{}/{}.log", LOGS_DIR.read().expect("Should be lockable!"), $tag))
+                .open(format!("{}/{}.log", LOGS_DIR, $tag))
                 .unwrap();
 
 			let inner = format!($($arg)+);
@@ -226,7 +223,7 @@ macro_rules! info {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(format!("{}/{}.log", LOGS_DIR.read().expect("Should be lockable!"), $tag))
+                .open(format!("{}/{}.log", LOGS_DIR, $tag))
                 .unwrap();
 
 			let inner = format!($($arg)+);
@@ -262,7 +259,7 @@ macro_rules! warn {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(format!("{}/{}.log", LOGS_DIR.read().expect("Should be lockable!"), $tag))
+                .open(format!("{}/{}.log", LOGS_DIR, $tag))
                 .unwrap();
 
 			let inner = format!($($arg)+);
@@ -298,7 +295,7 @@ macro_rules! error {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(format!("{}/{}.log", LOGS_DIR.read().expect("Should be lockable!"), $tag))
+                .open(format!("{}/{}.log", LOGS_DIR, $tag))
                 .unwrap();
 
 			let inner = format!($($arg)+);

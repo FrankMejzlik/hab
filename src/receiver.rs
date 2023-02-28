@@ -30,12 +30,6 @@ pub struct Receiver<BlockVerifier: BlockVerifierTrait> {
 
 impl<BlockVerifier: BlockVerifierTrait> Receiver<BlockVerifier> {
     pub fn new(params: ReceiverParams, config: Config) -> Self {
-        // Re-assign the log directory for this lib
-        let mut guard = crate::common::LOGS_DIR
-            .write()
-            .expect("Should be lockable!");
-        *guard = config.logs_dir.clone();
-
         let block_signer_params = BlockVerifierParams {};
         let verifier = BlockVerifier::new(block_signer_params, config.clone());
 
