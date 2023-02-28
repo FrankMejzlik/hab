@@ -12,7 +12,6 @@ use std::sync::atomic::AtomicUsize;
 use rand::{distributions::Distribution, Rng};
 // ---
 use crate::config;
-use crate::utils;
 
 //
 // Usefull type aliases
@@ -31,25 +30,33 @@ pub fn get_datagram_sizes() -> (usize, usize, usize) {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SenderIdentity {
-	pub id: u64,
+    pub id: u64,
 }
 
 impl SenderIdentity {
-	pub fn new(id: u64) -> Self {
-		SenderIdentity { id }
-	}
+    pub fn new(id: u64) -> Self {
+        SenderIdentity { id }
+    }
 }
 
 pub struct ReceivedBlock {
-	pub data: Vec<u8>,
-	pub sender: SenderIdentity,
-	pub sender_merge: HashSet<SenderIdentity>
+    pub data: Vec<u8>,
+    pub sender: SenderIdentity,
+    pub sender_merge: HashSet<SenderIdentity>,
 }
 
 impl ReceivedBlock {
-	pub fn new(data: Vec<u8>, sender: SenderIdentity, sender_merge: HashSet<SenderIdentity>) -> Self {
-		ReceivedBlock { data, sender, sender_merge }
-	}
+    pub fn new(
+        data: Vec<u8>,
+        sender: SenderIdentity,
+        sender_merge: HashSet<SenderIdentity>,
+    ) -> Self {
+        ReceivedBlock {
+            data,
+            sender,
+            sender_merge,
+        }
+    }
 }
 
 ///
@@ -129,7 +136,6 @@ impl StdError for Error {
     }
 }
 
-
 ///
 /// Wrapper around the standard logging macros to accept also tag and log the messages
 /// also to separate files per tag.
@@ -138,7 +144,7 @@ impl StdError for Error {
 #[macro_export]
 macro_rules! trace {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use crate::config::LOGS_DIR;
+        use $crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Trace {
@@ -174,7 +180,7 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! debug {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use crate::config::LOGS_DIR;
+        use $crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Debug {
@@ -245,7 +251,7 @@ macro_rules! info {
 #[macro_export]
 macro_rules! warn {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use crate::config::LOGS_DIR;
+        use $crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Info {
@@ -281,7 +287,7 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! error {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use crate::config::LOGS_DIR;
+        use $crate::config::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Info {
@@ -315,8 +321,10 @@ macro_rules! error {
 }
 
 /// A global counter for the number of processed input data blocks.
+#[allow(dead_code)]
 pub static LOG_INPUT_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// A global counter for the number of processed output data blocks.
+#[allow(dead_code)]
 pub static LOG_OUTPUT_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 #[macro_export]

@@ -26,6 +26,9 @@ pub use crate::horst::{
     HorstKeypair, HorstPublicKey as PublicKey, HorstSecretKey as SecretKey, HorstSigScheme,
     HorstSignature as Signature,
 };
+use crate::traits::BlockSignerParams;
+use crate::traits::BlockVerifierParams;
+use crate::traits::SignedBlockTrait;
 use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait};
 use crate::utils;
 use crate::utils::UnixTimestamp;
@@ -69,12 +72,6 @@ impl<Key> KeyWrapper<Key> {
     }
 }
 
-/// Struct holding parameters for the sender.
-pub struct BlockSignerParams {
-    pub seed: u64,
-    pub layers: usize,
-}
-
 /// Struct holding a data to send with the signature and piggy-backed public keys.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize> {
@@ -83,11 +80,15 @@ pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize> {
     pub pub_keys: Vec<KeyWrapper<PublicKey>>,
 }
 
-impl<Signature: Serialize, PublicKey: Serialize> SignedBlock<Signature, PublicKey> {
-    pub fn hash(&self) -> u64 {
+impl<Signature: Serialize, PublicKey: Serialize> SignedBlockTrait
+    for SignedBlock<Signature, PublicKey>
+{
+    fn hash(&self) -> u64 {
         let hash_data = xxh3_64(&self.data);
-        let hash_signature = xxh3_64(&bincode::serialize(&self.signature).expect("Should be serializable!"));
-		let hash_pubkeys = xxh3_64(&bincode::serialize(&self.pub_keys).expect("Should be serializable!"));
+        let hash_signature =
+            xxh3_64(&bincode::serialize(&self.signature).expect("Should be serializable!"));
+        let hash_pubkeys =
+            xxh3_64(&bincode::serialize(&self.pub_keys).expect("Should be serializable!"));
         hash_data ^ hash_signature ^ hash_pubkeys
     }
 }
@@ -139,7 +140,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
         }
 
         // If this key just died
-        let died = if (resulting_key.lifetime - resulting_key.signs) <= 0 {
+        let died = if (resulting_key.lifetime - resulting_key.signs) == 0 {
             // Remove it
             self.data[layer].remove(0);
             // And indicate that we need a new one
@@ -243,7 +244,7 @@ impl<
                 from_layer.push(vec![]);
             }
 
-            from_layer[*level as usize].push((k.clone(), ts.clone()));
+            from_layer[*level as usize].push((k.clone(), *ts));
         }
 
         for layer_items in from_layer.iter_mut() {
@@ -251,9 +252,11 @@ impl<
             layer_items.sort_by_key(|x| x.1);
 
             // Remove the excessive keys
-            for i in 0..std::cmp::max(0, layer_items.len() as i32 - max_per_layer as i32) as usize {
-                let key = &layer_items[i].0;
-                self.pks.remove(key);
+            for item in layer_items
+                .iter()
+                .take(std::cmp::max(0, layer_items.len() as i32 - max_per_layer as i32) as usize)
+            {
+                self.pks.remove(&item.0);
             }
         }
     }
@@ -461,7 +464,6 @@ impl<
     type PublicKey = <Self::Signer as SignatureSchemeTrait>::PublicKey;
     type Signature = <Self::Signer as SignatureSchemeTrait>::Signature;
     type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
-    type BlockSignerParams = BlockSignerParams;
 
     /// Constructs and initializes a block signer with the given parameters.
     fn new(params: BlockSignerParams) -> Self {
@@ -519,7 +521,7 @@ impl<
         self.store_state();
 
         Ok(SignedBlock {
-            data: data,
+            data,
             signature,
             pub_keys,
         })
@@ -566,10 +568,9 @@ impl<
     type PublicKey = <Self::Signer as SignatureSchemeTrait>::PublicKey;
     type Signature = <Self::Signer as SignatureSchemeTrait>::Signature;
     type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
-    type BlockVerifierParams = BlockSignerParams;
 
     /// Constructs and initializes a block signer with the given parameters.
-    fn new(_params: BlockSignerParams) -> Self {
+    fn new(_params: BlockVerifierParams) -> Self {
         // Try to load the identity from the disk
         match Self::load_state() {
             Some(x) => {

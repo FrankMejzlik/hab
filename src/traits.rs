@@ -3,13 +3,13 @@
 //!
 
 use std::error::Error as ErrorTrait;
-use std::io::{Read, Write};
 // ---
 use rand_core::{CryptoRng, RngCore, SeedableRng};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
-use crate::common::{ReceivedBlock, Error};
+use crate::common::{Error, ReceivedBlock};
 
 ///
 /// Provides a high-level interface for broadcasting the signed data to the subscribed receivers.
@@ -31,6 +31,19 @@ pub trait ReceiverTrait {
     fn receive(&mut self) -> Result<ReceivedBlock, Error>;
 }
 
+pub trait SignedBlockTrait {
+    fn hash(&self) -> u64;
+}
+
+/// Struct holding parameters for the sender.
+pub struct BlockSignerParams {
+    pub seed: u64,
+    pub layers: usize,
+}
+
+/// Struct holding parameters for the sender.
+pub struct BlockVerifierParams {}
+
 ///
 /// A high-level interface for signing the block of data and receiving the block of data
 /// that is safe to be transfered via insecure channel (e.g. Internet).  
@@ -48,13 +61,12 @@ pub trait ReceiverTrait {
 pub trait BlockSignerTrait {
     type Error: ErrorTrait;
     type Signer: SignatureSchemeTrait;
-    type BlockSignerParams;
     type SecretKey;
     type PublicKey;
     type Signature;
-    type SignedBlock;
+    type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned;
 
-    fn new(params: Self::BlockSignerParams) -> Self;
+    fn new(params: BlockSignerParams) -> Self;
     fn sign(&mut self, data: Vec<u8>) -> Result<Self::SignedBlock, Self::Error>;
 }
 
@@ -71,13 +83,12 @@ pub trait BlockSignerTrait {
 pub trait BlockVerifierTrait {
     type Error: ErrorTrait;
     type Signer: SignatureSchemeTrait;
-    type BlockVerifierParams;
     type SecretKey;
     type PublicKey;
     type Signature;
-    type SignedBlock;
+    type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned;
 
-    fn new(params: Self::BlockVerifierParams) -> Self;
+    fn new(params: BlockVerifierParams) -> Self;
     fn verify(&mut self, data: Vec<u8>) -> Result<(Vec<u8>, bool, u64, u64), Self::Error>;
 }
 

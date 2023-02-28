@@ -9,13 +9,14 @@ mod horst;
 mod merkle_tree;
 mod net_receiver;
 mod net_sender;
-mod sender;
 mod receiver;
+mod sender;
 mod traits;
 // ---
 pub mod utils;
 // ---
 pub use block_signer::BlockSigner;
-pub use sender::{Sender, SenderParams};
+pub use traits::{ReceiverTrait, SenderTrait};
+
 pub use receiver::{Receiver, ReceiverParams};
-pub use traits::{SenderTrait, ReceiverTrait};
+pub use sender::{Sender, SenderParams};

@@ -3,20 +3,15 @@
 //!
 
 use std::collections::HashSet;
-use std::io::{Read, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 // ---
-use crate::block_signer::BlockSignerParams;
 use crate::common::{Error, ReceivedBlock, SenderIdentity};
-use crate::config::BlockVerifierInst;
 use crate::net_receiver::{NetReceiver, NetReceiverParams};
-use crate::traits::{BlockVerifierTrait, ReceiverTrait};
-use tokio::sync::broadcast::error::SendError;
+use crate::traits::{BlockVerifierParams, BlockVerifierTrait, ReceiverTrait};
 use xxhash_rust::xxh3::xxh3_64;
 // ---
-use crate::log_output;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
@@ -26,17 +21,17 @@ pub struct ReceiverParams {
     pub running: Arc<AtomicBool>,
 }
 
-pub struct Receiver {
+pub struct Receiver<BlockVerifier: BlockVerifierTrait> {
     #[allow(dead_code)]
     params: ReceiverParams,
-    verifier: BlockVerifierInst,
+    verifier: BlockVerifier,
     net_receiver: NetReceiver,
 }
 
-impl Receiver {
+impl<BlockVerifier: BlockVerifierTrait> Receiver<BlockVerifier> {
     pub fn new(params: ReceiverParams) -> Self {
-        let block_signer_params = BlockSignerParams { seed: 0, layers: 0 };
-        let verifier = BlockVerifierInst::new(block_signer_params);
+        let block_signer_params = BlockVerifierParams {};
+        let verifier = BlockVerifier::new(block_signer_params);
 
         let net_recv_params = NetReceiverParams {
             addr: params.addr.clone(),
@@ -52,7 +47,7 @@ impl Receiver {
     }
 }
 
-impl ReceiverTrait for Receiver {
+impl<BlockVerifier: BlockVerifierTrait> ReceiverTrait for Receiver<BlockVerifier> {
     fn receive(&mut self) -> Result<ReceivedBlock, Error> {
         let signed_block = match self.net_receiver.receive() {
             Ok(x) => x,
