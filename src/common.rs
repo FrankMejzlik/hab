@@ -3,15 +3,14 @@
 //!
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::error::Error as StdError;
 use std::fmt;
 use std::mem::size_of;
 use std::sync::atomic::AtomicUsize;
+use std::{collections::HashSet, sync::RwLock};
 // ---
 use rand::{distributions::Distribution, Rng};
 // ---
-use crate::config;
 
 //
 // Usefull type aliases
@@ -21,11 +20,16 @@ pub type PortNumber = u16;
 pub type DgramHash = u64;
 pub type DgramIdx = u32;
 
-pub fn get_datagram_sizes() -> (usize, usize, usize) {
-    let header_size = size_of::<DgramHash>() + 2 * size_of::<DgramIdx>();
-    let payload_size = config::DATAGRAM_SIZE - header_size;
+use lazy_static::lazy_static;
+lazy_static! {
+    pub static ref LOGS_DIR: RwLock<String> = RwLock::new(String::from("logs/"));
+}
 
-    (config::DATAGRAM_SIZE, header_size, payload_size)
+pub fn get_datagram_sizes(dgram_size: usize) -> (usize, usize, usize) {
+    let header_size = size_of::<DgramHash>() + 2 * size_of::<DgramIdx>();
+    let payload_size = dgram_size - header_size;
+
+    (dgram_size, header_size, payload_size)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -144,14 +148,14 @@ impl StdError for Error {
 #[macro_export]
 macro_rules! trace {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use $crate::config::LOGS_DIR;
+        use $crate::common::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Trace {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(format!("{}/{}.log", LOGS_DIR, $tag))
+                .open(format!("{}/{}.log", LOGS_DIR.read().expect("Should be lockable!"), $tag))
                 .unwrap();
 
 			let inner = format!($($arg)+);
@@ -180,14 +184,14 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! debug {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use $crate::config::LOGS_DIR;
+        use $crate::common::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Debug {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(format!("{}/{}.log", LOGS_DIR, $tag))
+                .open(format!("{}/{}.log", LOGS_DIR.read().expect("Should be lockable!"), $tag))
                 .unwrap();
 
 			let inner = format!($($arg)+);
@@ -215,14 +219,14 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! info {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use $crate::config::LOGS_DIR;
+        use $crate::common::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Info {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(format!("{}/{}.log", LOGS_DIR, $tag))
+                .open(format!("{}/{}.log", LOGS_DIR.read().expect("Should be lockable!"), $tag))
                 .unwrap();
 
 			let inner = format!($($arg)+);
@@ -251,14 +255,14 @@ macro_rules! info {
 #[macro_export]
 macro_rules! warn {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use $crate::config::LOGS_DIR;
+        use $crate::common::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Info {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(format!("{}/{}.log", LOGS_DIR, $tag))
+                .open(format!("{}/{}.log", LOGS_DIR.read().expect("Should be lockable!"), $tag))
                 .unwrap();
 
 			let inner = format!($($arg)+);
@@ -287,14 +291,14 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! error {
 	(tag: $tag:expr, $($arg:tt)+) => {{
-        use $crate::config::LOGS_DIR;
+        use $crate::common::LOGS_DIR;
         use std::io::Write;
 
         if log::max_level() >= log::Level::Info {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(format!("{}/{}.log", LOGS_DIR, $tag))
+                .open(format!("{}/{}.log", LOGS_DIR.read().expect("Should be lockable!"), $tag))
                 .unwrap();
 
 			let inner = format!($($arg)+);
@@ -332,15 +336,15 @@ macro_rules! log_input {
     ($hash:expr, $data:expr) => {{
         use std::io::Write;
         use std::sync::atomic::Ordering;
+        use $crate::common::LOGS_DIR;
         use $crate::common::LOG_INPUT_COUNTER;
-        use $crate::config::INPUT_DBG_DIR;
 
         let mut log_file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(format!(
-                "{}/{:06}_{:020}.in",
-                INPUT_DBG_DIR,
+                "{}/input/{:06}_{:020}.in",
+                LOGS_DIR,
                 LOG_INPUT_COUNTER.load(Ordering::Acquire),
                 $hash
             ))
@@ -356,15 +360,15 @@ macro_rules! log_output {
     ($hash:expr, $data:expr) => {{
         use std::io::Write;
         use std::sync::atomic::Ordering;
+        use $crate::common::LOGS_DIR;
         use $crate::common::LOG_OUTPUT_COUNTER;
-        use $crate::config::OUTPUT_DBG_DIR;
 
         let mut log_file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(format!(
-                "{}/{:06}_{:020}.out",
-                OUTPUT_DBG_DIR,
+                "{}/output/{:06}_{:020}.out",
+                LOGS_DIR,
                 LOG_OUTPUT_COUNTER.load(Ordering::Acquire),
                 $hash
             ))

@@ -23,7 +23,6 @@ use tokio::time::{sleep, Duration};
 use crate::common;
 use crate::common::{DgramHash, DgramIdx};
 use crate::common::{Error, PortNumber};
-use crate::config;
 use crate::traits::Config;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
@@ -108,6 +107,7 @@ impl FragmentedBlock {
 pub struct FragmentedBlocks {
     blocks: HashMap<DgramHash, FragmentedBlock>,
     last_printed: SystemTime,
+    config: Config,
 }
 
 impl fmt::Display for FragmentedBlocks {
@@ -123,16 +123,17 @@ impl fmt::Display for FragmentedBlocks {
 }
 
 impl FragmentedBlocks {
-    pub fn new() -> Self {
+    pub fn new(config: Config) -> Self {
         FragmentedBlocks {
             blocks: HashMap::new(),
             last_printed: SystemTime::now(),
+            config,
         }
     }
 
     pub fn insert(&mut self, dgram: &[u8]) -> Option<Vec<u8>> {
         let (hash, idx, num_fragments, data) = parse_datagram(dgram);
-        let (_, _, payload_size) = common::get_datagram_sizes();
+        let (_, _, payload_size) = common::get_datagram_sizes(self.config.datagram_size);
 
         // If a new hash has come
         self.blocks
@@ -177,11 +178,12 @@ pub struct NetReceiver {
     rt: Runtime,
     socket: UdpSocket,
     blocks: FragmentedBlocks,
+    config: Config,
 }
 
 impl NetReceiver {
     #[allow(dead_code)]
-    pub fn new(params: NetReceiverParams, _config: Config) -> Self {
+    pub fn new(params: NetReceiverParams, config: Config) -> Self {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
         // Bind on some available port
@@ -205,13 +207,14 @@ impl NetReceiver {
         NetReceiver {
             rt,
             socket,
-            blocks: FragmentedBlocks::new(),
+            blocks: FragmentedBlocks::new(config.clone()),
+            config,
         }
     }
 
     pub fn receive(&mut self) -> Result<Vec<u8>, Error> {
         loop {
-            let mut buf = vec![0; config::BUFFER_SIZE];
+            let mut buf = vec![0; self.config.net_buffer_size];
             let (recv, _peer) = match self.rt.block_on(self.socket.recv_from(&mut buf)) {
                 Ok(x) => x,
                 Err(e) => {

@@ -20,7 +20,6 @@ use xxhash_rust::xxh3::xxh3_64;
 // ---
 use crate::common;
 use crate::common::UnixTimestamp;
-use crate::config;
 use crate::traits::Config;
 use crate::utils;
 #[allow(unused_imports)]
@@ -47,10 +46,11 @@ pub struct NetSender {
     sender_socket: UdpSocket,
     /// A table of the subscribed receivers with the UNIX timestamp of the current lifetime.
     subscribers: Subscribers,
+    config: Config,
 }
 
 impl NetSender {
-    pub fn new(params: NetSenderParams, _config: Config) -> Self {
+    pub fn new(params: NetSenderParams, config: Config) -> Self {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
         let subscribers = Subscribers::new();
@@ -60,6 +60,8 @@ impl NetSender {
             params.addr,
             params.running,
             subscribers.clone(),
+            config.subscriber_lifetime.as_millis(),
+            config.net_buffer_size,
         ));
 
         // Spawn the sender UDP socket
@@ -72,6 +74,7 @@ impl NetSender {
             rt,
             sender_socket,
             subscribers,
+            config,
         }
     }
 
@@ -83,7 +86,7 @@ impl NetSender {
     // |    hash (8B)    |  idx (4B) | total (4B)| payload (up to max datagram size) |
     // +-----------------+-----------+-----------+-----------------------------------+
     //
-    fn split_to_datagrams(data: &[u8]) -> Vec<Vec<u8>> {
+    fn split_to_datagrams(data: &[u8], dgram_size: usize) -> Vec<Vec<u8>> {
         let mut in_cursor = std::io::Cursor::new(data);
 
         let mut res = vec![];
@@ -91,7 +94,7 @@ impl NetSender {
         let hash = xxh3_64(data);
         let hash = hash.to_le_bytes();
 
-        let (_, _, payload_size) = common::get_datagram_sizes();
+        let (_, _, payload_size) = common::get_datagram_sizes(dgram_size);
         let data_size = data.len();
 
         let num_dgrams: u32 = ((data_size + payload_size - 1) / payload_size)
@@ -121,7 +124,7 @@ impl NetSender {
         {
             let subs_guard = self.subscribers.0.lock().expect("Should be lockable!");
 
-            let datagrams = Self::split_to_datagrams(data);
+            let datagrams = Self::split_to_datagrams(data, self.config.datagram_size);
 
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -155,7 +158,13 @@ impl NetSender {
         Ok(())
     }
 
-    async fn registrator_task(addr: String, running: Arc<AtomicBool>, mut subs: Subscribers) {
+    async fn registrator_task(
+        addr: String,
+        running: Arc<AtomicBool>,
+        mut subs: Subscribers,
+        lifetime: UnixTimestamp,
+        buffer_size: usize,
+    ) {
         let addr = match SocketAddrV4::from_str(&addr) {
             Ok(x) => x,
             Err(e) => panic!("Failed to parse the address '{addr}! ERROR: {e}'"),
@@ -167,7 +176,7 @@ impl NetSender {
         info!(tag: "registrator_task", "Accepting heartbeats from receivers at {addr}...");
 
         while running.load(Ordering::Acquire) {
-            let mut buf = [0; config::BUFFER_SIZE];
+            let mut buf = vec![0; buffer_size];
             let (recv, peer) = match socket.recv_from(&mut buf).await {
                 Ok(x) => x,
                 Err(e) => {
@@ -188,7 +197,7 @@ impl NetSender {
             let recv_socket = SocketAddr::new(peer.ip(), recv_port);
 
             // Insert/update this subscriber
-            subs.insert(recv_socket);
+            subs.insert(recv_socket, lifetime);
 
             debug!(tag: "registrator_task", "Accepted a heartbeat from '{peer}' listening for data at port {recv_port}.");
         }
@@ -207,9 +216,13 @@ impl Subscribers {
         Subscribers(Arc::new(Mutex::new(BTreeMap::new())))
     }
 
-    pub fn insert(&mut self, sub_sock: SocketAddr) -> Option<UnixTimestamp> {
+    pub fn insert(
+        &mut self,
+        sub_sock: SocketAddr,
+        lifetime: UnixTimestamp,
+    ) -> Option<UnixTimestamp> {
         let mut subs_guard = self.0.lock().expect("Should be lockable!");
-        let res = subs_guard.insert(sub_sock, utils::unix_ts() + config::SUBSCRIBER_LIFETIME);
+        let res = subs_guard.insert(sub_sock, utils::unix_ts() + lifetime);
         debug!(tag: "subscribers", "SUBSCRIBERS: {subs_guard:#?}");
         res
     }
@@ -227,6 +240,8 @@ mod tests {
     // ---
     use super::*;
 
+    const DGRAM_SIZE: usize = 512;
+
     #[test]
     fn test_split_to_datagrams() {
         //
@@ -235,7 +250,7 @@ mod tests {
         // +-----------------+-----------+-----------+-----------------------------------+
         //
 
-        let (dgram_size, header_size, _) = common::get_datagram_sizes();
+        let (dgram_size, header_size, _) = common::get_datagram_sizes(DGRAM_SIZE);
 
         let mut rng = rand::thread_rng();
         let data: Vec<u8> = (0..20000).map(|_| rng.gen()).collect();
@@ -243,7 +258,7 @@ mod tests {
         let hash = xxh3_64(&data);
         let num_dgrams = (data.len() as f32 / (dgram_size - header_size) as f32).ceil() as u32;
 
-        let datagrams = NetSender::split_to_datagrams(&data);
+        let datagrams = NetSender::split_to_datagrams(&data, DGRAM_SIZE);
 
         let mut act_payload = vec![];
 

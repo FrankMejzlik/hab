@@ -8,7 +8,7 @@ use std::sync::Arc;
 // ---
 use crate::common::Error;
 use crate::net_sender::{NetSender, NetSenderParams};
-use crate::traits::{BlockSignerParams, BlockSignerTrait, SenderTrait, SignedBlockTrait, Config};
+use crate::traits::{BlockSignerParams, BlockSignerTrait, Config, SenderTrait, SignedBlockTrait};
 #[allow(unused_imports)]
 use crate::{debug, error, info, log_input, trace, warn};
 
@@ -28,6 +28,12 @@ pub struct Sender<BlockSigner: BlockSignerTrait> {
 }
 impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
     pub fn new(params: SenderParams, config: Config) -> Self {
+        // Re-assign the log directory for this lib
+        let mut guard = crate::common::LOGS_DIR
+            .write()
+            .expect("Should be lockable!");
+        *guard = config.logs_dir.clone();
+
         let block_signer_params = BlockSignerParams {
             seed: params.seed,
             layers: params.layers,

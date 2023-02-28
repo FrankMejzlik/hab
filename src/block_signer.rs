@@ -21,7 +21,6 @@ use xxhash_rust::xxh3::xxh3_64;
 // ---
 use crate::common::DiscreteDistribution;
 use crate::common::Error;
-use crate::config;
 pub use crate::horst::{
     HorstKeypair, HorstPublicKey as PublicKey, HorstSecretKey as SecretKey, HorstSigScheme,
     HorstSignature as Signature,
@@ -191,6 +190,7 @@ pub struct BlockSigner<
     // TODO: Make this custom struct
     pks: HashMap<<Self as BlockSignerTrait>::PublicKey, (UnixTimestamp, u8)>,
     distr: DiscreteDistribution,
+    config: Config,
     _x: PhantomData<(MsgHashFn, TreeHashFn)>,
 }
 
@@ -263,8 +263,8 @@ impl<
     }
 
     fn store_state(&mut self) {
-        create_dir_all(config::ID_DIR).expect("!");
-        let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
+        create_dir_all(&self.config.id_dir).expect("!");
+        let filepath = format!("{}/{}", self.config.id_dir, self.config.id_filename);
         {
             let mut file = File::create(filepath).expect("The file should be writable!");
 
@@ -272,6 +272,7 @@ impl<
             let layers_bytes = bincode::serialize(&self.layers).expect("!");
             let pks_bytes = bincode::serialize(&self.pks).expect("!");
             let distr_bytes = bincode::serialize(&self.distr).expect("!");
+            let config_bytes = bincode::serialize(&self.distr).expect("!");
 
             file.write_u64::<LittleEndian>(rng_bytes.len() as u64)
                 .expect("!");
@@ -281,6 +282,8 @@ impl<
                 .expect("!");
             file.write_u64::<LittleEndian>(distr_bytes.len() as u64)
                 .expect("!");
+            file.write_u64::<LittleEndian>(config_bytes.len() as u64)
+                .expect("!");
             file.write_all(&rng_bytes)
                 .expect("Failed to write state to file");
             file.write_all(&layers_bytes)
@@ -289,17 +292,20 @@ impl<
                 .expect("Failed to write state to file");
             file.write_all(&distr_bytes)
                 .expect("Failed to write state to file");
+            file.write_all(&config_bytes)
+                .expect("Failed to write state to file");
         }
 
         // Check
         {
-            let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
+            let filepath = format!("{}/{}", self.config.id_dir, self.config.id_filename);
             let mut file = File::open(filepath).expect("!");
 
             let rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
             let layers_len = file.read_u64::<LittleEndian>().expect("!") as usize;
             let pks_len = file.read_u64::<LittleEndian>().expect("!") as usize;
             let distr_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+            let config_len = file.read_u64::<LittleEndian>().expect("!") as usize;
 
             let mut rng_bytes = vec![0u8; rng_len];
             file.read_exact(&mut rng_bytes)
@@ -317,6 +323,10 @@ impl<
             file.read_exact(&mut distr_bytes)
                 .expect("Failed to read state from file");
 
+            let mut config_bytes = vec![0u8; config_len];
+            file.read_exact(&mut config_bytes)
+                .expect("Failed to read state from file");
+
             let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
 
             let layers =
@@ -326,18 +336,19 @@ impl<
             >(&pks_bytes)
             .expect("!");
             let distr: DiscreteDistribution = bincode::deserialize(&distr_bytes).expect("!");
+            let config: Config = bincode::deserialize(&config_bytes).expect("!");
 
             assert_eq!(self.rng, rng);
             assert_eq!(self.layers, layers);
             assert_eq!(self.pks, pks);
             assert_eq!(self.distr, distr);
+            assert_eq!(self.config, config);
         }
     }
 
-    fn load_state() -> Option<Self> {
-        let filepath = format!("{}/{}", config::ID_DIR, config::ID_FILENAME);
+    fn load_state(filepath: &str) -> Option<Self> {
         debug!("Trying to load the state from '{filepath}'...");
-        let mut file = match File::open(&filepath) {
+        let mut file = match File::open(filepath) {
             Ok(x) => x,
             Err(_) => {
                 return None;
@@ -348,6 +359,7 @@ impl<
         let layers_len = file.read_u64::<LittleEndian>().expect("!") as usize;
         let pks_len = file.read_u64::<LittleEndian>().expect("!") as usize;
         let distr_len = file.read_u64::<LittleEndian>().expect("!") as usize;
+        let config_len = file.read_u64::<LittleEndian>().expect("!") as usize;
 
         let mut rng_bytes = vec![0u8; rng_len];
         file.read_exact(&mut rng_bytes)
@@ -365,6 +377,10 @@ impl<
         file.read_exact(&mut distr_bytes)
             .expect("Failed to read state from file");
 
+        let mut config_bytes = vec![0u8; config_len];
+        file.read_exact(&mut config_bytes)
+            .expect("Failed to read state from file");
+
         let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
         let layers =
             bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
@@ -373,6 +389,7 @@ impl<
         >(&pks_bytes)
         .expect("!");
         let distr: DiscreteDistribution = bincode::deserialize(&distr_bytes).expect("!");
+        let config: Config = bincode::deserialize(&config_bytes).expect("!");
 
         info!("An existing ID loaded from '{}'.", filepath);
         Some(Self {
@@ -380,6 +397,7 @@ impl<
             layers,
             pks,
             distr,
+            config,
             _x: PhantomData,
         })
     }
@@ -467,9 +485,9 @@ impl<
     type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
 
     /// Constructs and initializes a block signer with the given parameters.
-    fn new(params: BlockSignerParams, _config: Config) -> Self {
+    fn new(params: BlockSignerParams, config: Config) -> Self {
         // Try to load the identity from the disk
-        match Self::load_state() {
+        match Self::load_state(&format!("{}/{}", config.id_dir, config.id_filename)) {
             Some(x) => {
                 info!(tag: "sender", "The existing ID was loaded.");
                 debug!(tag: "block_signer", "{}", x.dump_layers());
@@ -502,6 +520,7 @@ impl<
             layers,
             pks: HashMap::new(),
             distr,
+            config,
             _x: PhantomData,
         };
 
@@ -571,9 +590,9 @@ impl<
     type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
 
     /// Constructs and initializes a block signer with the given parameters.
-    fn new(_params: BlockVerifierParams, _config: Config) -> Self {
+    fn new(_params: BlockVerifierParams, config: Config) -> Self {
         // Try to load the identity from the disk
-        match Self::load_state() {
+        match Self::load_state(&format!("{}/{}", config.id_dir, config.id_filename)) {
             Some(x) => {
                 info!(tag: "receiver", "The existing ID was loaded.");
                 debug!(tag: "block_verifier", "{}", x.dump_layers());
@@ -588,6 +607,7 @@ impl<
             layers: KeyLayers::new(0),     //< Not used
             pks: HashMap::new(),
             distr: DiscreteDistribution::new(vec![]), //< Not used
+            config,
             _x: PhantomData,
         };
 
@@ -643,7 +663,7 @@ impl<
                 }
             }
             // TODO: Delete the oldest PKs if you have at least four of the same level
-            self.prune_pks(config::MAX_PKS);
+            self.prune_pks(self.config.max_pks);
         }
 
         self.store_state();

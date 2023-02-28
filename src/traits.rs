@@ -15,14 +15,15 @@ use crate::common::{Error, ReceivedBlock};
 ///
 /// General config of the library.
 ///
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
-	id_dir: String,
-	id_filename: String,
-	subscriber_lifetime: Duration,
-	net_buffer_size: usize,
-	datagram_size: usize,
-	max_pks: usize
+    pub id_dir: String,
+    pub id_filename: String,
+    pub logs_dir: String,
+    pub subscriber_lifetime: Duration,
+    pub net_buffer_size: usize,
+    pub datagram_size: usize,
+    pub max_pks: usize,
 }
 
 ///
