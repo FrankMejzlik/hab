@@ -24,6 +24,7 @@ use crate::common;
 use crate::common::{DgramHash, DgramIdx};
 use crate::common::{Error, PortNumber};
 use crate::config;
+use crate::traits::Config;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
@@ -180,7 +181,7 @@ pub struct NetReceiver {
 
 impl NetReceiver {
     #[allow(dead_code)]
-    pub fn new(params: NetReceiverParams) -> Self {
+    pub fn new(params: NetReceiverParams, _config: Config) -> Self {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
         // Bind on some available port

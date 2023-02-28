@@ -3,6 +3,7 @@
 //!
 
 use std::error::Error as ErrorTrait;
+use std::time::Duration;
 // ---
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::de::DeserializeOwned;
@@ -10,6 +11,19 @@ use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
 use crate::common::{Error, ReceivedBlock};
+
+///
+/// General config of the library.
+///
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+	id_dir: String,
+	id_filename: String,
+	subscriber_lifetime: Duration,
+	net_buffer_size: usize,
+	datagram_size: usize,
+	max_pks: usize
+}
 
 ///
 /// Provides a high-level interface for broadcasting the signed data to the subscribed receivers.
@@ -66,7 +80,7 @@ pub trait BlockSignerTrait {
     type Signature;
     type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned;
 
-    fn new(params: BlockSignerParams) -> Self;
+    fn new(params: BlockSignerParams, config: Config) -> Self;
     fn sign(&mut self, data: Vec<u8>) -> Result<Self::SignedBlock, Self::Error>;
 }
 
@@ -88,7 +102,7 @@ pub trait BlockVerifierTrait {
     type Signature;
     type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned;
 
-    fn new(params: BlockVerifierParams) -> Self;
+    fn new(params: BlockVerifierParams, config: Config) -> Self;
     fn verify(&mut self, data: Vec<u8>) -> Result<(Vec<u8>, bool, u64, u64), Self::Error>;
 }
 

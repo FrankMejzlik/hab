@@ -21,6 +21,7 @@ use xxhash_rust::xxh3::xxh3_64;
 use crate::common;
 use crate::common::UnixTimestamp;
 use crate::config;
+use crate::traits::Config;
 use crate::utils;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
@@ -49,7 +50,7 @@ pub struct NetSender {
 }
 
 impl NetSender {
-    pub fn new(params: NetSenderParams) -> Self {
+    pub fn new(params: NetSenderParams, _config: Config) -> Self {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
         let subscribers = Subscribers::new();

@@ -28,6 +28,7 @@ pub use crate::horst::{
 };
 use crate::traits::BlockSignerParams;
 use crate::traits::BlockVerifierParams;
+use crate::traits::Config;
 use crate::traits::SignedBlockTrait;
 use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait};
 use crate::utils;
@@ -466,7 +467,7 @@ impl<
     type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
 
     /// Constructs and initializes a block signer with the given parameters.
-    fn new(params: BlockSignerParams) -> Self {
+    fn new(params: BlockSignerParams, _config: Config) -> Self {
         // Try to load the identity from the disk
         match Self::load_state() {
             Some(x) => {
@@ -570,7 +571,7 @@ impl<
     type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
 
     /// Constructs and initializes a block signer with the given parameters.
-    fn new(_params: BlockVerifierParams) -> Self {
+    fn new(_params: BlockVerifierParams, _config: Config) -> Self {
         // Try to load the identity from the disk
         match Self::load_state() {
             Some(x) => {

@@ -9,7 +9,7 @@ use std::sync::Arc;
 // ---
 use crate::common::{Error, ReceivedBlock, SenderIdentity};
 use crate::net_receiver::{NetReceiver, NetReceiverParams};
-use crate::traits::{BlockVerifierParams, BlockVerifierTrait, ReceiverTrait};
+use crate::traits::{BlockVerifierParams, BlockVerifierTrait, ReceiverTrait, Config};
 use xxhash_rust::xxh3::xxh3_64;
 // ---
 #[allow(unused_imports)]
@@ -29,15 +29,15 @@ pub struct Receiver<BlockVerifier: BlockVerifierTrait> {
 }
 
 impl<BlockVerifier: BlockVerifierTrait> Receiver<BlockVerifier> {
-    pub fn new(params: ReceiverParams) -> Self {
+    pub fn new(params: ReceiverParams, config: Config) -> Self {
         let block_signer_params = BlockVerifierParams {};
-        let verifier = BlockVerifier::new(block_signer_params);
+        let verifier = BlockVerifier::new(block_signer_params, config.clone());
 
         let net_recv_params = NetReceiverParams {
             addr: params.addr.clone(),
             running: params.running.clone(),
         };
-        let net_receiver = NetReceiver::new(net_recv_params);
+        let net_receiver = NetReceiver::new(net_recv_params, config);
 
         Receiver {
             params,

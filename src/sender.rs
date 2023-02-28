@@ -8,7 +8,7 @@ use std::sync::Arc;
 // ---
 use crate::common::Error;
 use crate::net_sender::{NetSender, NetSenderParams};
-use crate::traits::{BlockSignerParams, BlockSignerTrait, SenderTrait, SignedBlockTrait};
+use crate::traits::{BlockSignerParams, BlockSignerTrait, SenderTrait, SignedBlockTrait, Config};
 #[allow(unused_imports)]
 use crate::{debug, error, info, log_input, trace, warn};
 
@@ -27,18 +27,18 @@ pub struct Sender<BlockSigner: BlockSignerTrait> {
     net_sender: NetSender,
 }
 impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
-    pub fn new(params: SenderParams) -> Self {
+    pub fn new(params: SenderParams, config: Config) -> Self {
         let block_signer_params = BlockSignerParams {
             seed: params.seed,
             layers: params.layers,
         };
-        let signer = BlockSigner::new(block_signer_params);
+        let signer = BlockSigner::new(block_signer_params, config.clone());
 
         let net_sender_params = NetSenderParams {
             addr: params.addr.clone(),
             running: params.running.clone(),
         };
-        let net_sender = NetSender::new(net_sender_params);
+        let net_sender = NetSender::new(net_sender_params, config);
 
         Sender {
             params,

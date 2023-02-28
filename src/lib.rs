@@ -3,7 +3,6 @@
 //!
 mod block_signer;
 mod common;
-mod config;
 mod diag_server;
 mod horst;
 mod merkle_tree;
@@ -14,6 +13,7 @@ mod sender;
 mod traits;
 // ---
 pub mod utils;
+pub mod config;
 // ---
 pub use block_signer::BlockSigner;
 pub use traits::{ReceiverTrait, SenderTrait};
