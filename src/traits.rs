@@ -10,7 +10,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
-use crate::common::{Error, ReceivedBlock, SenderIdentity};
+use crate::common::{Error, ReceivedBlock, SenderIdentity, SeqNum};
 
 ///
 /// General config of the library.
@@ -32,7 +32,7 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MsgMetadata {
     /// The sequence number of this message.
-    pub seq: usize,
+    pub seq: SeqNum,
 }
 
 ///

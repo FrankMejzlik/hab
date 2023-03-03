@@ -18,6 +18,7 @@ pub type UnixTimestamp = u128;
 pub type PortNumber = u16;
 pub type DgramHash = u64;
 pub type DgramIdx = u32;
+pub type SeqNum = usize;
 
 pub const LOGS_DIR: &str = "logs/";
 
@@ -28,7 +29,7 @@ pub fn get_datagram_sizes(dgram_size: usize) -> (usize, usize, usize) {
     (dgram_size, header_size, payload_size)
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct SenderIdentity {
     pub id: u64,
 }

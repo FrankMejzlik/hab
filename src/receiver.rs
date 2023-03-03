@@ -2,13 +2,13 @@
 //! The main module providing high-level API for the receiver of the data.
 //!
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // ---
-use crate::common::{Error, ReceivedBlock};
+use crate::common::{Error, ReceivedBlock, SenderIdentity, SeqNum};
 use crate::log_output;
 use crate::net_receiver::{NetReceiver, NetReceiverParams};
 use crate::traits::{BlockVerifierParams, BlockVerifierTrait, Config, MsgMetadata, ReceiverTrait};
@@ -28,6 +28,7 @@ pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'sta
     #[allow(dead_code)]
     verifier: Arc<Mutex<BlockVerifier>>,
     net_receiver: Arc<Mutex<NetReceiver>>,
+    prev_seqs: HashMap<SenderIdentity, SeqNum>,
 }
 
 impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifier> {
@@ -97,6 +98,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
             params,
             verifier,
             net_receiver,
+            prev_seqs: HashMap::new(),
         }
     }
 
@@ -132,6 +134,12 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
             }
 
             if let Some((msg, sender_id, _metadata, hash)) = received {
+                // In-orderity check
+                assert!(
+                    _metadata.seq < *self.prev_seqs.get(&sender_id).expect("Should be there!"),
+                    "The messages are not delivered in-order!"
+                );
+
                 #[cfg(feature = "log_input_output")]
                 {
                     debug!(tag: "receiver","[{}][{hash}] {}", _metadata.seq, String::from_utf8_lossy(&msg));
