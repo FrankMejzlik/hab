@@ -10,6 +10,7 @@ mod net_sender;
 mod receiver;
 mod sender;
 mod traits;
+mod pub_key_store;
 // ---
 pub mod common;
 pub mod utils;

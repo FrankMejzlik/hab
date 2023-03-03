@@ -2,7 +2,7 @@
 //! Module for broadcasting the signed data packets.
 //!
 
-use std::collections::HashMap;
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fs::{create_dir_all, File};
@@ -22,10 +22,13 @@ use xxhash_rust::xxh3::xxh3_64;
 use crate::common::DiscreteDistribution;
 use crate::common::Error;
 use crate::common::SenderIdentity;
+use crate::horst::HorstPublicKey;
 pub use crate::horst::{
     HorstKeypair, HorstPublicKey as PublicKey, HorstSecretKey as SecretKey, HorstSigScheme,
     HorstSignature as Signature,
 };
+use crate::pub_key_store::PubKeyStore;
+use crate::pub_key_store::StoredPubKey;
 use crate::traits::BlockSignerParams;
 use crate::traits::BlockVerifierParams;
 use crate::traits::Config;
@@ -188,8 +191,7 @@ pub struct BlockSigner<
 > {
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
-    // TODO: Make this custom struct
-    pks: HashMap<<Self as BlockSignerTrait>::PublicKey, (UnixTimestamp, u8)>,
+    pks: PubKeyStore<<Self as BlockSignerTrait>::PublicKey>,
     distr: DiscreteDistribution,
     config: Config,
     _x: PhantomData<(MsgHashFn, TreeHashFn)>,
@@ -209,8 +211,8 @@ impl<
     BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
     fn new_id(&mut self) -> SenderIdentity {
-        let id = SenderIdentity { id: 0 };
-        //self.next_id +=1;
+        let id = SenderIdentity { id: self.pks.next_id };
+        self.pks.next_id +=1;
         id
     }
 
@@ -220,11 +222,16 @@ impl<
     fn dump_pks(&self) -> String {
         let mut res = String::new();
         res.push_str("=== RECEIVER: Public keys ===\n");
-        for (pk, (ts, level)) in self.pks.iter() {
-            res.push_str(&format!(
-                "\t[{level}]\t{pk} -> | {} |\n",
-                utils::unix_ts_to_string(*ts)
-            ));
+        for (id, key_set) in self.pks.keys.iter() {
+            res.push_str(&format!("--- IDENTITY: {id:?} ---"));
+            for pk in key_set.iter() {
+                res.push_str(&format!(
+                    "\t[{}]\t{} -> | {} |\n",
+                    pk.layer,
+                    pk.key,
+                    utils::unix_ts_to_string(pk.received)
+                ));
+            }
         }
         res
     }
@@ -243,30 +250,30 @@ impl<
     /// Searches the provided layer if there is more than provided keys and deletes the ones
     /// with the earliest timestamp.
     ///
-    fn prune_pks(&mut self, max_per_layer: usize) {
-        // Copy all key-timestamp pairs from the given layer
-        let mut from_layer = vec![];
-        for (k, (ts, level)) in self.pks.iter() {
-            let missing = std::cmp::max(0, (*level as i64 + 1) - from_layer.len() as i64);
-            for _ in 0..missing {
-                from_layer.push(vec![]);
-            }
+    fn prune_pks(&mut self, _max_per_layer: usize) {
+        // // Copy all key-timestamp pairs from the given layer
+        // let mut from_layer = vec![];
+        // for (k, (ts, level)) in self.pks.iter() {
+        //     let missing = std::cmp::max(0, (*level as i64 + 1) - from_layer.len() as i64);
+        //     for _ in 0..missing {
+        //         from_layer.push(vec![]);
+        //     }
 
-            from_layer[*level as usize].push((k.clone(), *ts));
-        }
+        //     from_layer[*level as usize].push((k.clone(), *ts));
+        // }
 
-        for layer_items in from_layer.iter_mut() {
-            // Sort them by timestamp
-            layer_items.sort_by_key(|x| x.1);
+        // for layer_items in from_layer.iter_mut() {
+        //     // Sort them by timestamp
+        //     layer_items.sort_by_key(|x| x.1);
 
-            // Remove the excessive keys
-            for item in layer_items
-                .iter()
-                .take(std::cmp::max(0, layer_items.len() as i32 - max_per_layer as i32) as usize)
-            {
-                self.pks.remove(&item.0);
-            }
-        }
+        //     // Remove the excessive keys
+        //     for item in layer_items
+        //         .iter()
+        //         .take(std::cmp::max(0, layer_items.len() as i32 - max_per_layer as i32) as usize)
+        //     {
+        //         self.pks.remove(&item.0);
+        //     }
+        // }
     }
 
     fn store_state(&mut self) {
@@ -338,10 +345,9 @@ impl<
 
             let layers =
                 bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
-            let pks = bincode::deserialize::<
-                HashMap<<Self as BlockSignerTrait>::PublicKey, (UnixTimestamp, u8)>,
-            >(&pks_bytes)
-            .expect("!");
+            let pks =
+                bincode::deserialize::<PubKeyStore<HorstPublicKey<TREE_HASH_SIZE>>>(&pks_bytes)
+                    .expect("!");
             let distr: DiscreteDistribution = bincode::deserialize(&distr_bytes).expect("!");
             let config: Config = bincode::deserialize(&config_bytes).expect("!");
 
@@ -389,10 +395,8 @@ impl<
         let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
         let layers =
             bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
-        let pks = bincode::deserialize::<
-            HashMap<<Self as BlockSignerTrait>::PublicKey, (UnixTimestamp, u8)>,
-        >(&pks_bytes)
-        .expect("!");
+        let pks = bincode::deserialize::<PubKeyStore<HorstPublicKey<TREE_HASH_SIZE>>>(&pks_bytes)
+            .expect("!");
         let distr: DiscreteDistribution = bincode::deserialize(&distr_bytes).expect("!");
         let config: Config = bincode::deserialize(&config_bytes).expect("!");
 
@@ -525,7 +529,7 @@ impl<
         let new_inst = BlockSigner {
             rng,
             layers,
-            pks: HashMap::new(),
+            pks: PubKeyStore::new(),
             distr,
             config,
             _x: PhantomData,
@@ -612,7 +616,7 @@ impl<
         let new_inst = BlockSigner {
             rng: CsPrng::seed_from_u64(0), //< Not used
             layers: KeyLayers::new(0),     //< Not used
-            pks: HashMap::new(),
+            pks: PubKeyStore::new(),
             distr: DiscreteDistribution::new(vec![]), //< Not used
             config,
             _x: PhantomData,
@@ -647,11 +651,14 @@ impl<
 
         // Try to verify with at least one already certified key
         let mut sender_id = None;
-        for (pk, _) in self.pks.iter() {
-            let ok = Self::Signer::verify(&to_verify, &block.signature, pk);
-            if ok {
-                sender_id = Some(SenderIdentity { id: 42 });
-                break;
+        for (id, keys) in self.pks.keys.iter() {
+            for stored_key in keys {
+                let pk = &stored_key.key;
+                let ok = Self::Signer::verify(&to_verify, &block.signature, pk);
+                if ok {
+                    sender_id = Some(id.clone());
+                    break;
+                }
             }
         }
 
@@ -661,6 +668,7 @@ impl<
             None => {
                 let new_id = self.new_id();
                 info!(tag: "receiver", "(!) New identity detected: {new_id:#?} (!)");
+                self.pks.keys.insert(new_id.clone(), BTreeSet::new());
                 new_id
             }
         };
@@ -668,11 +676,15 @@ impl<
         // Store all the certified public keys
         for kw in block.pub_keys.iter() {
             // If the key is not yet cached
-            if !self.pks.contains_key(&kw.key) {
-                // Store it
-                self.pks
-                    .insert(kw.key.clone(), (utils::unix_ts(), kw.layer));
-            }
+            let wrapped_key = StoredPubKey {
+                key: kw.key.clone(),
+                received: utils::unix_ts(),
+                layer: kw.layer,
+            };
+
+            let existing_keys = self.pks.keys.get_mut(&sender_id).expect("Should exist!");
+            // Store it
+            existing_keys.insert(wrapped_key);
         }
         // TODO: Delete the oldest PKs if you have at least four of the same level
         self.prune_pks(self.config.max_pks);

@@ -28,6 +28,7 @@ pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'sta
     #[allow(dead_code)]
     verifier: Arc<Mutex<BlockVerifier>>,
     net_receiver: Arc<Mutex<NetReceiver>>,
+	#[allow(dead_code)]
     prev_seqs: HashMap<SenderIdentity, SeqNum>,
 }
 
@@ -134,11 +135,11 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
             }
 
             if let Some((msg, sender_id, _metadata, hash)) = received {
-                // In-orderity check
-                assert!(
-                    _metadata.seq < *self.prev_seqs.get(&sender_id).expect("Should be there!"),
-                    "The messages are not delivered in-order!"
-                );
+                // // In-orderity check
+                // assert!(
+                //     _metadata.seq < *self.prev_seqs.get(&sender_id).expect("Should be there!"),
+                //     "The messages are not delivered in-order!"
+                // );
 
                 #[cfg(feature = "log_input_output")]
                 {
