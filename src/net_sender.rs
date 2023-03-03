@@ -193,7 +193,7 @@ impl NetSender {
             // Read the port that the receiver will listen for the data
             let mut two_bytes = [0; 2];
             two_bytes.copy_from_slice(&buf[..2]);
-            let recv_port = u16::from_ne_bytes(two_bytes);
+            let recv_port = u16::from_le_bytes(two_bytes);
             let recv_socket = SocketAddr::new(peer.ip(), recv_port);
 
             // Insert/update this subscriber

@@ -30,6 +30,6 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 serde-big-array = "0.5"
 
 [features]
-default = []
-simulate_stdin = []
+default = ["log_input_output"]
+log_input_output = []
 

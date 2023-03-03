@@ -21,6 +21,7 @@ use xxhash_rust::xxh3::xxh3_64;
 // ---
 use crate::common::DiscreteDistribution;
 use crate::common::Error;
+use crate::common::SenderIdentity;
 pub use crate::horst::{
     HorstKeypair, HorstPublicKey as PublicKey, HorstSecretKey as SecretKey, HorstSigScheme,
     HorstSignature as Signature,
@@ -207,6 +208,12 @@ impl<
     >
     BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
+    fn new_id(&mut self) -> SenderIdentity {
+        let id = SenderIdentity { id: 0 };
+        //self.next_id +=1;
+        id
+    }
+
     ///
     /// Pretty-prints the structure holding public keys.
     ///
@@ -615,7 +622,7 @@ impl<
         new_inst
     }
 
-    fn verify(&mut self, data: Vec<u8>) -> Result<(Vec<u8>, bool, u64, u64), Error> {
+    fn verify(&mut self, data: Vec<u8>) -> Result<(Vec<u8>, SenderIdentity, u64, u64), Error> {
         let block: Self::SignedBlock =
             bincode::deserialize(&data).expect("Should be deserializable!");
 
@@ -639,36 +646,40 @@ impl<
             .append(&mut bincode::serialize(&block.pub_keys).expect("Should be serializable!"));
 
         // Try to verify with at least one already certified key
-        let mut valid = false;
+        let mut sender_id = None;
         for (pk, _) in self.pks.iter() {
             let ok = Self::Signer::verify(&to_verify, &block.signature, pk);
             if ok {
-                valid = true;
+                sender_id = Some(SenderIdentity { id: 42 });
                 break;
             }
         }
 
-        // If the signature is valid (or the very first block received), we certify the PKs received
-        if valid || self.pks.is_empty() {
-            if self.pks.is_empty() {
-                info!(tag: "receiver", "(!) Accepting the first received block! (!)");
+        // If no known identity
+        let sender_id = match sender_id {
+            Some(x) => x,
+            None => {
+                let new_id = self.new_id();
+                info!(tag: "receiver", "(!) New identity detected: {new_id:#?} (!)");
+                new_id
             }
-            // Store all the certified public keys
-            for kw in block.pub_keys.iter() {
-                // If the key is not yet cached
-                if !self.pks.contains_key(&kw.key) {
-                    // Store it
-                    self.pks
-                        .insert(kw.key.clone(), (utils::unix_ts(), kw.layer));
-                }
+        };
+
+        // Store all the certified public keys
+        for kw in block.pub_keys.iter() {
+            // If the key is not yet cached
+            if !self.pks.contains_key(&kw.key) {
+                // Store it
+                self.pks
+                    .insert(kw.key.clone(), (utils::unix_ts(), kw.layer));
             }
-            // TODO: Delete the oldest PKs if you have at least four of the same level
-            self.prune_pks(self.config.max_pks);
         }
+        // TODO: Delete the oldest PKs if you have at least four of the same level
+        self.prune_pks(self.config.max_pks);
 
         self.store_state();
         debug!(tag: "block_verifier", "{}", self.dump_pks());
 
-        Ok((block.data, valid, hash_sign, hash_pks))
+        Ok((block.data, sender_id, hash_sign, hash_pks))
     }
 }

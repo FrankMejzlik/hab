@@ -2,7 +2,7 @@
 //! Module for receiving the data broadcasted by the `NetSender`.
 //!
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::io::{Cursor, Read};
 use std::net::SocketAddrV4;
@@ -20,12 +20,37 @@ use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 // ---
-use crate::common;
+use crate::common::{self, SenderIdentity};
 use crate::common::{DgramHash, DgramIdx};
 use crate::common::{Error, PortNumber};
-use crate::traits::Config;
+use crate::traits::{Config, MsgMetadata};
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
+
+struct DeliveryQueues {
+    data: VecDeque<(Vec<u8>, SenderIdentity, MsgMetadata, DgramHash)>,
+}
+
+impl DeliveryQueues {
+    pub fn new() -> Self {
+        DeliveryQueues {
+            data: VecDeque::new(),
+        }
+    }
+    pub fn dequeue(&mut self) -> Option<(Vec<u8>, SenderIdentity, MsgMetadata, DgramHash)> {
+        self.data.pop_front()
+    }
+
+    pub fn enqueue(
+        &mut self,
+        msg: Vec<u8>,
+        id: SenderIdentity,
+        metadata: MsgMetadata,
+        hash: DgramHash,
+    ) {
+        self.data.push_back((msg, id, metadata, hash))
+    }
+}
 
 pub fn parse_datagram(data: &[u8]) -> (DgramHash, DgramIdx, DgramIdx, Vec<u8>) {
     let mut in_cursor = Cursor::new(data);
@@ -179,6 +204,7 @@ pub struct NetReceiver {
     socket: UdpSocket,
     blocks: FragmentedBlocks,
     config: Config,
+    delivery: DeliveryQueues,
 }
 
 impl NetReceiver {
@@ -209,6 +235,7 @@ impl NetReceiver {
             socket,
             blocks: FragmentedBlocks::new(config.clone()),
             config,
+            delivery: DeliveryQueues::new(),
         }
     }
 
@@ -237,6 +264,20 @@ impl NetReceiver {
         }
     }
 
+    pub fn dequeue(&mut self) -> Option<(Vec<u8>, SenderIdentity, MsgMetadata, DgramHash)> {
+        self.delivery.dequeue()
+    }
+
+    pub fn enqueue(
+        &mut self,
+        msg: Vec<u8>,
+        id: SenderIdentity,
+        metadata: MsgMetadata,
+        hash: DgramHash,
+    ) {
+        self.delivery.enqueue(msg, id, metadata, hash)
+    }
+
     async fn heartbeat_task(addr: String, running: Arc<AtomicBool>, recv_port: PortNumber) {
         let addr = match SocketAddrV4::from_str(&addr) {
             Ok(x) => x,
@@ -255,7 +296,7 @@ impl NetReceiver {
         // The task loop
         while running.load(Ordering::Acquire) {
             debug!(tag: "heartbeat_task", "Sending a heartbeat to the sender at '{addr}'...");
-            match socket.send(&recv_port.to_ne_bytes()).await {
+            match socket.send(&recv_port.to_le_bytes()).await {
                 Ok(_) => (),
                 Err(e) => warn!("Failed to send a heartbeat to '{addr}'! ERROR: {e}"),
             };

@@ -10,7 +10,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
-use crate::common::{Error, ReceivedBlock};
+use crate::common::{Error, ReceivedBlock, SenderIdentity};
 
 ///
 /// General config of the library.
@@ -24,6 +24,15 @@ pub struct Config {
     pub net_buffer_size: usize,
     pub datagram_size: usize,
     pub max_pks: usize,
+}
+
+///
+/// A structure holding additional data about the message that the protocol is transmitting.
+///
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MsgMetadata {
+    /// The sequence number of this message.
+    pub seq: usize,
 }
 
 ///
@@ -104,7 +113,8 @@ pub trait BlockVerifierTrait {
     type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned;
 
     fn new(params: BlockVerifierParams, config: Config) -> Self;
-    fn verify(&mut self, data: Vec<u8>) -> Result<(Vec<u8>, bool, u64, u64), Self::Error>;
+    fn verify(&mut self, data: Vec<u8>)
+        -> Result<(Vec<u8>, SenderIdentity, u64, u64), Self::Error>;
 }
 
 ///

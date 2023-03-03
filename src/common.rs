@@ -7,7 +7,6 @@ use std::collections::HashSet;
 use std::error::Error as StdError;
 use std::fmt;
 use std::mem::size_of;
-use std::sync::atomic::AtomicUsize;
 // ---
 use rand::{distributions::Distribution, Rng};
 // ---
@@ -321,58 +320,35 @@ macro_rules! error {
 
 }
 
-/// A global counter for the number of processed input data blocks.
-#[allow(dead_code)]
-pub static LOG_INPUT_COUNTER: AtomicUsize = AtomicUsize::new(0);
-/// A global counter for the number of processed output data blocks.
-#[allow(dead_code)]
-pub static LOG_OUTPUT_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
 #[macro_export]
 macro_rules! log_input {
-    ($hash:expr, $data:expr) => {{
+    ($seq:expr, $hash:expr, $data:expr) => {{
         use std::io::Write;
-        use std::sync::atomic::Ordering;
         use $crate::common::LOGS_DIR;
-        use $crate::common::LOG_INPUT_COUNTER;
 
         let mut log_file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(format!(
-                "{}/input/{:06}_{:020}.in",
-                LOGS_DIR,
-                LOG_INPUT_COUNTER.load(Ordering::Acquire),
-                $hash
-            ))
+            .open(format!("{}/input/{:06}_{:020}.in", LOGS_DIR, $seq, $hash))
             .unwrap();
 
         log_file.write_all($data).unwrap();
-        LOG_INPUT_COUNTER.fetch_add(1, Ordering::Release);
     }};
 }
 
 #[macro_export]
 macro_rules! log_output {
-    ($hash:expr, $data:expr) => {{
+    ($seq:expr, $hash:expr, $data:expr) => {{
         use std::io::Write;
-        use std::sync::atomic::Ordering;
         use $crate::common::LOGS_DIR;
-        use $crate::common::LOG_OUTPUT_COUNTER;
 
         let mut log_file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(format!(
-                "{}/output/{:06}_{:020}.out",
-                LOGS_DIR,
-                LOG_OUTPUT_COUNTER.load(Ordering::Acquire),
-                $hash
-            ))
+            .open(format!("{}/output/{:06}_{:020}.out", LOGS_DIR, $seq, $hash))
             .unwrap();
 
         log_file.write_all($data).unwrap();
-        LOG_OUTPUT_COUNTER.fetch_add(1, Ordering::Release);
     }};
 }
 
