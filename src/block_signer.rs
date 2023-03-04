@@ -8,6 +8,7 @@ use std::fmt::Formatter;
 use std::fs::{create_dir_all, File};
 use std::io::{Read, Write};
 use std::marker::PhantomData;
+use std::mem::swap;
 // ---
 use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
@@ -251,6 +252,9 @@ impl<
     /// with the earliest timestamp.
     ///
     fn prune_pks(&mut self, _max_per_layer: usize) {
+
+
+		
         // // Copy all key-timestamp pairs from the given layer
         // let mut from_layer = vec![];
         // for (k, (ts, level)) in self.pks.iter() {
@@ -651,11 +655,13 @@ impl<
 
         // Try to verify with at least one already certified key
         let mut sender_id = None;
+		let mut decrypt_pk = None;
         for (id, keys) in self.pks.keys.iter() {
             for stored_key in keys {
                 let pk = &stored_key.key;
                 let ok = Self::Signer::verify(&to_verify, &block.signature, pk);
                 if ok {
+					decrypt_pk = Some(pk.clone());
                     sender_id = Some(id.clone());
                     break;
                 }
@@ -674,6 +680,7 @@ impl<
         };
 
         // Store all the certified public keys
+		let mut to_merge = BTreeSet::new();
         for kw in block.pub_keys.iter() {
             // If the key is not yet cached
             let wrapped_key = StoredPubKey {
@@ -682,10 +689,54 @@ impl<
                 layer: kw.layer,
             };
 
+			
+
+
+
             let existing_keys = self.pks.keys.get_mut(&sender_id).expect("Should exist!");
             // Store it
             existing_keys.insert(wrapped_key);
         }
+
+		// -----------------------------------
+
+		// -----------------------------------
+		if let Some(x) = decrypt_pk {
+			let wrapped_key = StoredPubKey {
+				key: x,
+				received: utils::unix_ts(),
+				layer: 0,
+			};
+
+			for (id, key_set) in self.pks.keys.iter_mut() {
+				if key_set.contains(&wrapped_key) {
+					to_merge.insert(id.clone());
+				}
+			}
+		}
+		
+		if to_merge.len() > 1 {
+			let mut it = to_merge.into_iter();
+			let mut fst = it.next().expect("Should be present!");
+			let mut snd = it.next().expect("Should be present!");
+
+			// Make sure that we're merging to the lower ID
+			if fst.id > snd.id {
+				swap(&mut fst, &mut snd)
+			}
+
+			info!(tag: "receiver", "(!) Merging identity {} and {} (!)",fst.id, snd.id );
+
+			// To be copied
+			let mut existing_keys_snd = self.pks.keys.remove(&snd).expect("Should be there!");
+			// Where to be copied
+			let existing_keys_fst = self.pks.keys.get_mut(&fst).expect("Should exist!");
+
+			existing_keys_fst.append(&mut existing_keys_snd);
+		}
+		// ------------------------------------
+
+
         // TODO: Delete the oldest PKs if you have at least four of the same level
         self.prune_pks(self.config.max_pks);
 
