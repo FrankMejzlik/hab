@@ -11,6 +11,11 @@ use std::marker::PhantomData;
 use std::mem::swap;
 // ---
 use crate::common::BlockSignerParams;
+use crate::common::MsgMetadata;
+use crate::common::MsgVerification;
+use crate::common::VerifyResult;
+use crate::constants;
+use bincode::{deserialize, serialize};
 use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
@@ -90,10 +95,8 @@ impl<Signature: Serialize, PublicKey: Serialize> SignedBlockTrait
 {
     fn hash(&self) -> u64 {
         let hash_data = xxh3_64(&self.data);
-        let hash_signature =
-            xxh3_64(&bincode::serialize(&self.signature).expect("Should be serializable!"));
-        let hash_pubkeys =
-            xxh3_64(&bincode::serialize(&self.pub_keys).expect("Should be serializable!"));
+        let hash_signature = xxh3_64(&serialize(&self.signature).expect(constants::EX_SER));
+        let hash_pubkeys = xxh3_64(&serialize(&self.pub_keys).expect(constants::EX_SER));
         hash_data ^ hash_signature ^ hash_pubkeys
     }
 }
@@ -211,6 +214,22 @@ impl<
     >
     BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
+    ///
+    /// Reads the additional data in the message and returns it along with the clean message.
+    ///
+    fn read_metadata(mut msg: Vec<u8>) -> (MsgMetadata, Vec<u8>) {
+        let len = msg.len() - std::mem::size_of::<usize>();
+
+        let seq = usize::from_le_bytes(
+            msg[len..]
+                .try_into()
+                .expect("Should have a correct length!"),
+        );
+        debug!("seq: {seq}");
+        msg.drain(len..);
+        (MsgMetadata { seq }, msg)
+    }
+
     fn new_id(&mut self, petname: Option<String>) -> SenderIdentity {
         let id = SenderIdentity::new(self.pks.next_id, petname);
         self.pks.next_id += 1;
@@ -284,11 +303,11 @@ impl<
         {
             let mut file = File::create(filepath).expect("The file should be writable!");
 
-            let rng_bytes = bincode::serialize(&self.rng).expect("!");
-            let layers_bytes = bincode::serialize(&self.layers).expect("!");
-            let pks_bytes = bincode::serialize(&self.pks).expect("!");
-            let distr_bytes = bincode::serialize(&self.distr).expect("!");
-            let config_bytes = bincode::serialize(&self.params).expect("!");
+            let rng_bytes = serialize(&self.rng).expect("!");
+            let layers_bytes = serialize(&self.layers).expect("!");
+            let pks_bytes = serialize(&self.pks).expect("!");
+            let distr_bytes = serialize(&self.distr).expect("!");
+            let config_bytes = serialize(&self.params).expect("!");
 
             file.write_u64::<LittleEndian>(rng_bytes.len() as u64)
                 .expect("!");
@@ -343,15 +362,13 @@ impl<
             file.read_exact(&mut config_bytes)
                 .expect("Failed to read state from file");
 
-            let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
+            let rng: CsPrng = deserialize(&rng_bytes).expect("!");
 
-            let layers =
-                bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
+            let layers = deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
             let _pks =
-                bincode::deserialize::<PubKeyStore<HorstPublicKey<TREE_HASH_SIZE>>>(&pks_bytes)
-                    .expect("!");
-            let distr: DiscreteDistribution = bincode::deserialize(&distr_bytes).expect("!");
-            let config: BlockSignerParams = bincode::deserialize(&config_bytes).expect("!");
+                deserialize::<PubKeyStore<HorstPublicKey<TREE_HASH_SIZE>>>(&pks_bytes).expect("!");
+            let distr: DiscreteDistribution = deserialize(&distr_bytes).expect("!");
+            let config: BlockSignerParams = deserialize(&config_bytes).expect("!");
 
             assert_eq!(self.rng, rng);
             assert_eq!(self.layers, layers);
@@ -394,13 +411,12 @@ impl<
         file.read_exact(&mut config_bytes)
             .expect("Failed to read state from file");
 
-        let rng: CsPrng = bincode::deserialize(&rng_bytes).expect("!");
-        let layers =
-            bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
-        let pks = bincode::deserialize::<PubKeyStore<HorstPublicKey<TREE_HASH_SIZE>>>(&pks_bytes)
-            .expect("!");
-        let distr: DiscreteDistribution = bincode::deserialize(&distr_bytes).expect("!");
-        let params: BlockSignerParams = bincode::deserialize(&config_bytes).expect("!");
+        let rng: CsPrng = deserialize(&rng_bytes).expect("!");
+        let layers = deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
+        let pks =
+            deserialize::<PubKeyStore<HorstPublicKey<TREE_HASH_SIZE>>>(&pks_bytes).expect("!");
+        let distr: DiscreteDistribution = deserialize(&distr_bytes).expect("!");
+        let params: BlockSignerParams = deserialize(&config_bytes).expect("!");
 
         info!("An existing ID loaded from '{}'.", filepath);
         Some(Self {
@@ -546,7 +562,7 @@ impl<
 
         // Append the piggy-backed pubkeys to the payload
         let mut data_to_sign = data.clone();
-        data_to_sign.append(&mut bincode::serialize(&pub_keys).expect("Should be serializable!"));
+        data_to_sign.append(&mut serialize(&pub_keys).expect(constants::EX_SER));
 
         let signature = Self::Signer::sign(&data_to_sign, &sk);
         debug!(tag: "block_signer", "{}", self.dump_layers());
@@ -628,45 +644,35 @@ impl<
         new_inst
     }
 
-    fn verify(&mut self, data: Vec<u8>) -> Result<(Vec<u8>, SenderIdentity, u64, u64), Error> {
-        let block: Self::SignedBlock =
-            bincode::deserialize(&data).expect("Should be deserializable!");
+    fn verify(&mut self, data: Vec<u8>) -> Result<VerifyResult, Error> {
+        let signed_block: Self::SignedBlock = deserialize(&data).expect(constants::EX_DESER);
+        let hash = signed_block.hash();
 
-        let mut tmp2 = 0;
-        for x in &block.signature.data {
-            for y in x {
-                let h = xxh3_64(y);
-                tmp2 ^= h;
-            }
-        }
+        // Signature MUST be verified also with public keys attached
+        let mut to_verify = signed_block.data.clone();
+        to_verify.append(&mut serialize(&signed_block.pub_keys).expect(constants::EX_SER));
 
-        let mut tmp = 0;
-        for pk in block.pub_keys.iter() {
-            tmp ^= xxh3_64(pk.key.data.as_ref());
-        }
-        let hash_pks = tmp;
-        let hash_sign = tmp2;
+        let mut sender_id = None;
 
-        let mut to_verify = block.data.clone();
-        to_verify
-            .append(&mut bincode::serialize(&block.pub_keys).expect("Should be serializable!"));
-
-        //
         // Is this the first message from the target sender?
         if self.pks.target_id.is_none() {
-            // Generate the petnamed identity for it
+            // Generate the petnamed identity for the target sender
             let new_id = self.new_id(Some(self.params.target_petname.clone()));
-            info!(tag: "receiver", "(!) New identity detected: {new_id:#?} (!)");
+            info!(tag: "receiver", "(!) Generating a new trusted identity with keys from the first message: {new_id:#?} (!)");
+            // vv TO BE REMOVED vv
+            sender_id = Some(new_id.clone());
+            self.pks.keys.insert(new_id.clone(), BTreeSet::new());
+            // ^^ TO BE REMOVED ^^
             self.pks.set_target_id(new_id);
         }
 
         // Try to verify with at least one already certified key
-        let mut sender_id = None;
+
         let mut decrypt_pk = None;
         for (id, keys) in self.pks.keys.iter() {
             for stored_key in keys {
                 let pk = &stored_key.key;
-                let ok = Self::Signer::verify(&to_verify, &block.signature, pk);
+                let ok = Self::Signer::verify(&to_verify, &signed_block.signature, pk);
                 if ok {
                     decrypt_pk = Some(pk.clone());
                     sender_id = Some(id.clone());
@@ -688,7 +694,7 @@ impl<
 
         // Store all the certified public keys
         let mut to_merge = BTreeSet::new();
-        for kw in block.pub_keys.iter() {
+        for kw in signed_block.pub_keys.iter() {
             // If the key is not yet cached
             let wrapped_key = StoredPubKey::new(kw);
             let existing_keys = self.pks.keys.get_mut(&sender_id).expect("Should exist!");
@@ -736,6 +742,14 @@ impl<
         self.store_state();
         debug!(tag: "block_verifier", "{}", self.dump_pks());
 
-        Ok((block.data, sender_id, hash_sign, hash_pks))
+        // Read the metadata from the message
+        let (metadata, msg) = Self::read_metadata(signed_block.data);
+
+        Ok(VerifyResult {
+            msg,
+            metadata,
+            verification: MsgVerification::Certified(sender_id),
+            hash,
+        })
     }
 }

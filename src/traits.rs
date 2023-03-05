@@ -10,7 +10,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
-use crate::common::{BlockSignerParams, Error, ReceivedBlock, SenderIdentity};
+use crate::common::{BlockSignerParams, Error, ReceivedBlock, VerifyResult};
 
 ///
 /// Global trait bound specifications.
@@ -94,8 +94,7 @@ pub trait BlockVerifierTrait {
     type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned;
 
     fn new(params: BlockSignerParams) -> Self;
-    fn verify(&mut self, data: Vec<u8>)
-        -> Result<(Vec<u8>, SenderIdentity, u64, u64), Self::Error>;
+    fn verify(&mut self, data: Vec<u8>) -> Result<VerifyResult, Self::Error>;
 }
 
 ///

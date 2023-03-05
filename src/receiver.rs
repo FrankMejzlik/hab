@@ -8,11 +8,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // ---
-use crate::common::{BlockSignerParams, Error, MsgMetadata, ReceivedBlock, SenderIdentity, SeqNum};
+use crate::common::{BlockSignerParams, Error, ReceivedBlock, SenderIdentity, SeqNum};
 use crate::log_output;
 use crate::net_receiver::{NetReceiver, NetReceiverParams};
 use crate::traits::{BlockVerifierTrait, ReceiverTrait};
-use xxhash_rust::xxh3::xxh3_64;
 // ---
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
@@ -83,9 +82,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
                     //< LOCK
                     let mut verifier_guard = verifier_clone.lock().expect("Should be lockable!");
 
-                    let (msg, sender_id, _hash_sign, _hash_pks) = match verifier_guard
-                        .verify(signed_block)
-                    {
+                    let verify_result = match verifier_guard.verify(signed_block) {
                         Ok(x) => x,
                         Err(e) => {
                             warn!(tag: "receiver", "Failed to verify the signed block! ERRROR: {e}");
@@ -93,15 +90,10 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
                         }
                     };
 
-                    // Read the metadata from the message
-                    let (metadata, msg) = Self::read_metadata(msg);
-
-                    let hash = xxh3_64(&msg) ^ _hash_sign ^ _hash_pks;
-
                     let mut net_receiver_guard =
                         net_receiver_clone.lock().expect("Should be lockable!");
 
-                    net_receiver_guard.enqueue(msg, sender_id, metadata, hash);
+                    net_receiver_guard.enqueue(verify_result);
                     //< UNLOCK
                 }
             }
@@ -113,22 +105,6 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
             net_receiver,
             prev_seqs: HashMap::new(),
         }
-    }
-
-    ///
-    /// Reads the additional data in the message and returns it along with the clean message.
-    ///
-    fn read_metadata(mut msg: Vec<u8>) -> (MsgMetadata, Vec<u8>) {
-        let len = msg.len() - std::mem::size_of::<usize>();
-
-        let seq = usize::from_le_bytes(
-            msg[len..]
-                .try_into()
-                .expect("Should have a correct length!"),
-        );
-        debug!("seq: {seq}");
-        msg.drain(len..);
-        (MsgMetadata { seq }, msg)
     }
 }
 

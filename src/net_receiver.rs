@@ -20,7 +20,10 @@ use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 // ---
-use crate::common::{self, DgramHash, DgramIdx, Error, MsgMetadata, PortNumber, SenderIdentity};
+use crate::common::{
+    self, DgramHash, DgramIdx, Error, MsgMetadata, MsgVerification, PortNumber, SenderIdentity,
+    VerifyResult,
+};
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
@@ -268,14 +271,18 @@ impl NetReceiver {
         self.delivery.dequeue()
     }
 
-    pub fn enqueue(
-        &mut self,
-        msg: Vec<u8>,
-        id: SenderIdentity,
-        metadata: MsgMetadata,
-        hash: DgramHash,
-    ) {
-        self.delivery.enqueue(msg, id, metadata, hash)
+    pub fn enqueue(&mut self, ver_res: VerifyResult) {
+        match ver_res.verification {
+            MsgVerification::Certified(id) => {
+                self.delivery
+                    .enqueue(ver_res.msg, id, ver_res.metadata, ver_res.hash)
+            }
+            MsgVerification::Verified(id) => {
+                self.delivery
+                    .enqueue(ver_res.msg, id, ver_res.metadata, ver_res.hash)
+            }
+            _ => (),
+        }
     }
 
     async fn heartbeat_task(addr: String, running: Arc<AtomicBool>, recv_port: PortNumber) {

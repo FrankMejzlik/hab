@@ -18,6 +18,7 @@ use rand::{distributions::Distribution, Rng};
 pub type UnixTimestamp = u128;
 pub type PortNumber = u16;
 pub type DgramHash = u64;
+pub type MsgSignPubkeysChecksum = u64;
 pub type DgramIdx = u32;
 pub type SeqNum = usize;
 pub type SenderId = u64;
@@ -29,6 +30,26 @@ pub fn get_datagram_sizes(dgram_size: usize) -> (usize, usize, usize) {
     let payload_size = dgram_size - header_size;
 
     (dgram_size, header_size, payload_size)
+}
+
+///
+/// Enum describing the states of message verification that can happen.
+///
+pub enum MsgVerification {
+    /// Not send by the target identity nor someone certified by it.
+    Unverified,
+    /// Send by someone who has been certified by the target identity (not proved to be the identity itself).
+    Certified(SenderIdentity),
+    /// Proved that the target identity signed the message.
+    Verified(SenderIdentity),
+}
+
+pub struct VerifyResult {
+    pub msg: Vec<u8>,
+    pub metadata: MsgMetadata,
+    pub verification: MsgVerification,
+    /// A hash computed as a combination of three parts (msg, signature, pubkeys).
+    pub hash: MsgSignPubkeysChecksum,
 }
 
 ///
@@ -189,7 +210,7 @@ macro_rules! trace {
         use $crate::common::LOGS_DIR;
         use std::io::Write;
 
-        if log::max_level() >= log::Level::Trace {
+        if log::max_level() >= log::Level::Trace && log::STATIC_MAX_LEVEL >= log::Level::Trace {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -225,7 +246,7 @@ macro_rules! debug {
         use $crate::common::LOGS_DIR;
         use std::io::Write;
 
-        if log::max_level() >= log::Level::Debug {
+        if log::max_level() >= log::Level::Debug && log::STATIC_MAX_LEVEL >= log::Level::Debug {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -260,7 +281,7 @@ macro_rules! info {
         use $crate::common::LOGS_DIR;
         use std::io::Write;
 
-        if log::max_level() >= log::Level::Info {
+        if log::max_level() >= log::Level::Info && log::STATIC_MAX_LEVEL >= log::Level::Info {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -296,7 +317,7 @@ macro_rules! warn {
         use $crate::common::LOGS_DIR;
         use std::io::Write;
 
-        if log::max_level() >= log::Level::Info {
+        if log::max_level() >= log::Level::Warn && log::STATIC_MAX_LEVEL >= log::Level::Warn {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -332,7 +353,7 @@ macro_rules! error {
         use $crate::common::LOGS_DIR;
         use std::io::Write;
 
-        if log::max_level() >= log::Level::Info {
+        if log::max_level() >= log::Level::Error && log::STATIC_MAX_LEVEL >= log::Level::Error {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
