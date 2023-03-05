@@ -26,6 +26,7 @@ pub struct ReceiverParams {
     pub datagram_size: usize,
     pub net_buffer_size: usize,
     pub pub_key_layer_limit: usize,
+    pub key_lifetime: usize,
 }
 
 pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'static> {
@@ -46,6 +47,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
             id_filename: params.id_filename.clone(),
             target_petname: params.target_name.clone(),
             pub_key_layer_limit: params.pub_key_layer_limit,
+            key_lifetime: params.key_lifetime,
         };
         let verifier = Arc::new(Mutex::new(BlockVerifier::new(block_signer_params)));
 

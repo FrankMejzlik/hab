@@ -27,7 +27,7 @@
 //! * `ImplCsPrng` - Cryptographically safe pseudo-random number generator.
 //!
 use std::boxed::Box;
-use std::fmt::{Display, Formatter};
+use std::fmt::{self, Display, Formatter};
 use std::marker::PhantomData;
 // ---
 use hex::encode;
@@ -97,7 +97,7 @@ impl<const T: usize, const N: usize> Display for HorstSecretKey<T, N> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct HorstPublicKey<const N: usize> {
     pub data: Vec<u8>,
 }
@@ -113,6 +113,12 @@ impl<const N: usize> HorstPublicKey<N> {
 impl<const N: usize> Display for HorstPublicKey<N> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}", utils::shorten(&utils::to_hex(&self.data), 10))
+    }
+}
+
+impl<const N: usize> fmt::Debug for HorstPublicKey<N> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", utils::shorten(&utils::to_hex(&self.data), 6))
     }
 }
 

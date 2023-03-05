@@ -2,24 +2,25 @@
 //! Module for broadcasting the signed data packets.
 //!
 
-use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fs::{create_dir_all, File};
 use std::io::{Read, Write};
 use std::marker::PhantomData;
-use std::mem::swap;
 // ---
 use crate::common::BlockSignerParams;
 use crate::common::MsgMetadata;
 use crate::common::MsgVerification;
 use crate::common::VerifyResult;
 use crate::constants;
+use crate::log_graph;
 use bincode::{deserialize, serialize};
 use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use core::fmt::Debug;
+use petgraph::dot::Config;
+use petgraph::dot::Dot;
 use rand::prelude::Distribution;
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -111,15 +112,18 @@ pub struct KeyLayers<const T: usize, const N: usize> {
     until_top: usize,
     /// A sequence number of the next block to sign.
     next_seq: u64,
+    /// A number of signatures that one keypair can generate.
+    key_lifetime: usize,
 }
 
 impl<const T: usize, const N: usize> KeyLayers<T, N> {
-    pub fn new(depth: usize) -> Self {
+    pub fn new(depth: usize, key_lifetime: usize) -> Self {
         KeyLayers {
             data: vec![vec![]; depth],
             first_sign: true,
             until_top: 0,
             next_seq: 0,
+            key_lifetime,
         }
     }
 
@@ -128,7 +132,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
             key: keypair,
             last_cerified: 0,
             signs: 0,
-            lifetime: 20,
+            lifetime: self.key_lifetime,
         };
 
         self.data[level].push(key_cont);
@@ -240,20 +244,25 @@ impl<
     /// Pretty-prints the structure holding public keys.
     ///
     fn dump_pks(&self) -> String {
-        let mut res = String::new();
-        res.push_str("=== RECEIVER: Public keys ===\n");
-        for (id, key_set) in self.pks.keys.iter() {
-            res.push_str(&format!("--- IDENTITY: {id:?} ---"));
-            for pk in key_set.iter() {
-                res.push_str(&format!(
-                    "\t[{}]\t{} -> | {} |\n",
-                    pk.layer,
-                    pk.key,
-                    utils::unix_ts_to_string(pk.received)
-                ));
-            }
-        }
-        res
+        format!(
+            "{:?}",
+            Dot::with_config(&self.pks.graph, &[Config::EdgeNoLabel])
+        )
+
+        // let mut res = String::new();
+        // res.push_str("=== RECEIVER: Public keys ===\n");
+        // for (id, key_set) in self.pks.keys.iter() {
+        //     res.push_str(&format!("--- IDENTITY: {id:?} ---"));
+        //     for pk in key_set.iter() {
+        //         res.push_str(&format!(
+        //             "\t[{}]\t{} -> | {} |\n",
+        //             pk.layer,
+        //             pk.key,
+        //             utils::unix_ts_to_string(pk.received)
+        //         ));
+        //     }
+        // }
+        // res
     }
 
     ///
@@ -264,37 +273,6 @@ impl<
         res.push_str("=== SENDER: Secret & public keys ===\n");
         res.push_str(&format!("{}", self.layers));
         res
-    }
-
-    ///
-    /// Searches the provided layer if there is more than provided keys and deletes the ones
-    /// with the earliest timestamp.
-    ///
-    fn prune_pks(&mut self, _max_per_layer: usize) {
-
-        // // Copy all key-timestamp pairs from the given layer
-        // let mut from_layer = vec![];
-        // for (k, (ts, level)) in self.pks.iter() {
-        //     let missing = std::cmp::max(0, (*level as i64 + 1) - from_layer.len() as i64);
-        //     for _ in 0..missing {
-        //         from_layer.push(vec![]);
-        //     }
-
-        //     from_layer[*level as usize].push((k.clone(), *ts));
-        // }
-
-        // for layer_items in from_layer.iter_mut() {
-        //     // Sort them by timestamp
-        //     layer_items.sort_by_key(|x| x.1);
-
-        //     // Remove the excessive keys
-        //     for item in layer_items
-        //         .iter()
-        //         .take(std::cmp::max(0, layer_items.len() as i32 - max_per_layer as i32) as usize)
-        //     {
-        //         self.pks.remove(&item.0);
-        //     }
-        // }
     }
 
     fn store_state(&mut self) {
@@ -537,7 +515,7 @@ impl<
 
         // Initially populate the layers with keys
         let mut rng = CsPrng::seed_from_u64(params.seed);
-        let mut layers = KeyLayers::new(params.layers);
+        let mut layers = KeyLayers::new(params.layers, params.key_lifetime);
         for l_idx in 0..params.layers {
             // Two key at all times on all layers
             layers.insert(l_idx, Self::Signer::gen_key_pair(&mut rng));
@@ -625,6 +603,7 @@ impl<
             Some(x) => {
                 info!(tag: "receiver", "The existing ID was loaded.");
                 debug!(tag: "block_verifier", "{}", x.dump_layers());
+                info!(tag: "receiver", "X: {:?}", x.pks.target_id);
                 return x;
             }
             None => info!(tag: "receiver", "No existing ID found, creating a new one."),
@@ -634,13 +613,15 @@ impl<
         let new_inst = BlockSigner {
             params,
             rng: CsPrng::seed_from_u64(0), //< Not used
-            layers: KeyLayers::new(0),     //< Not used
+            layers: KeyLayers::new(0, 0),  //< Not used
             pks: PubKeyStore::new(),
             distr: DiscreteDistribution::new(vec![]), //< Not used
             _x: PhantomData,
         };
 
-        debug!(tag: "block_verifier", "{}", new_inst.dump_pks());
+        let dump = new_inst.dump_pks();
+        debug!(tag: "block_verifier", "{}", dump);
+        log_graph!(dump);
         new_inst
     }
 
@@ -652,95 +633,74 @@ impl<
         let mut to_verify = signed_block.data.clone();
         to_verify.append(&mut serialize(&signed_block.pub_keys).expect(constants::EX_SER));
 
-        let mut sender_id = None;
-
-        // Is this the first message from the target sender?
-        if self.pks.target_id.is_none() {
+        // Is this the first message from the target sender (we'll put the pubkeys directly to it's identity)?
+        let all_to_identity = if self.pks.target_id.is_none() {
             // Generate the petnamed identity for the target sender
             let new_id = self.new_id(Some(self.params.target_petname.clone()));
             info!(tag: "receiver", "(!) Generating a new trusted identity with keys from the first message: {new_id:#?} (!)");
-            // vv TO BE REMOVED vv
-            sender_id = Some(new_id.clone());
-            self.pks.keys.insert(new_id.clone(), BTreeSet::new());
-            // ^^ TO BE REMOVED ^^
             self.pks.set_target_id(new_id);
-        }
-
-        // Try to verify with at least one already certified key
-
-        let mut decrypt_pk = None;
-        for (id, keys) in self.pks.keys.iter() {
-            for stored_key in keys {
-                let pk = &stored_key.key;
-                let ok = Self::Signer::verify(&to_verify, &signed_block.signature, pk);
-                if ok {
-                    decrypt_pk = Some(pk.clone());
-                    sender_id = Some(id.clone());
-                    break;
-                }
-            }
-        }
-
-        // If no known identity
-        let sender_id = match sender_id {
-            Some(x) => x,
-            None => {
-                let new_id = self.new_id(None);
-                info!(tag: "receiver", "(!) New identity detected: {new_id:#?} (!)");
-                self.pks.keys.insert(new_id.clone(), BTreeSet::new());
-                new_id
-            }
+            true
+        } else {
+            false
         };
 
-        // Store all the certified public keys
-        let mut to_merge = BTreeSet::new();
-        for kw in signed_block.pub_keys.iter() {
-            // If the key is not yet cached
-            let wrapped_key = StoredPubKey::new(kw);
-            let existing_keys = self.pks.keys.get_mut(&sender_id).expect("Should exist!");
-            // Store it
-            existing_keys.insert(wrapped_key);
-        }
+        let mut verification = MsgVerification::Unverified; //< By default it's unverified
+        let mut certificating_key_idx = None;
+        // Iterate over all keys that have been certified by the target sender
+        for (v_idx, key_cont) in self.pks.target_keys_iter() {
+            debug!(tag: "receiver", "key_cont: {key_cont:?}");
 
-        // -----------------------------------
+            // Verify with this pubkey
+            if Self::Signer::verify(&to_verify, &signed_block.signature, &key_cont.key) {
+                let target_sender = self
+                    .pks
+                    .get_target_id()
+                    .expect("The target sender should be already set!");
+                assert!(
+                    key_cont.certified_by.contains(&target_sender),
+                    "The target sender should have already certified this key."
+                );
+                debug!(tag: "receiver", "Verified with key: {key_cont:?}");
 
-        // -----------------------------------
-        if let Some(x) = decrypt_pk {
-            let wrapped_key = StoredPubKey::from_raw(x);
-
-            for (id, key_set) in self.pks.keys.iter_mut() {
-                if key_set.contains(&wrapped_key) {
-                    to_merge.insert(id.clone());
-                }
+                verification = MsgVerification::Certified(target_sender);
+                certificating_key_idx = Some(v_idx);
+                break;
             }
         }
+        assert!(!(certificating_key_idx.is_some() && all_to_identity), "Cannot be first message from the target identity and verified message at the same time!");
 
-        if to_merge.len() > 1 {
-            let mut it = to_merge.into_iter();
-            let mut fst = it.next().expect("Should be present!");
-            let mut snd = it.next().expect("Should be present!");
+        let sender_id = self
+            .pks
+            .get_target_id()
+            .expect("The target sender should be already set!");
 
-            // Make sure that we're merging to the lower ID
-            if fst.id > snd.id {
-                swap(&mut fst, &mut snd)
+        // If the message was verified with at least certified key
+        if certificating_key_idx.is_some() {
+            // Store all the certified public keys under the target identity
+            for kw in signed_block.pub_keys.iter() {
+                // Get a key to store
+                let key_to_store = StoredPubKey::new_with_certified(kw, sender_id.clone());
+
+                // Insert the key to the graph
+                self.pks.insert_key(
+                    certificating_key_idx.expect("Should be some."),
+                    key_to_store,
+                );
             }
-
-            info!(tag: "receiver", "(!) Merging identity {} and {} (!)",fst.id, snd.id );
-
-            // To be copied
-            let mut existing_keys_snd = self.pks.keys.remove(&snd).expect("Should be there!");
-            // Where to be copied
-            let existing_keys_fst = self.pks.keys.get_mut(&fst).expect("Should exist!");
-
-            existing_keys_fst.append(&mut existing_keys_snd);
         }
-        // ------------------------------------
-
-        // TODO: Delete the oldest PKs if you have at least four of the same level
-        self.prune_pks(self.params.pub_key_layer_limit);
+        // If the first message we put all the keys into the identity
+        else if all_to_identity {
+            let mut id_keys = vec![];
+            for kw in signed_block.pub_keys {
+                id_keys.push(StoredPubKey::new_with_identity(&kw, sender_id.clone()));
+            }
+            self.pks.insert_identity_keys(id_keys);
+        }
 
         self.store_state();
-        debug!(tag: "block_verifier", "{}", self.dump_pks());
+        let dump = self.dump_pks();
+        debug!(tag: "block_verifier", "{}", dump);
+        log_graph!(dump);
 
         // Read the metadata from the message
         let (metadata, msg) = Self::read_metadata(signed_block.data);
@@ -748,7 +708,7 @@ impl<
         Ok(VerifyResult {
             msg,
             metadata,
-            verification: MsgVerification::Certified(sender_id),
+            verification,
             hash,
         })
     }

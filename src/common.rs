@@ -88,6 +88,8 @@ pub struct BlockSignerParams {
     pub target_petname: String,
     /// A maximum number of public keys to store per layer (before deleting the oldest ones).
     pub pub_key_layer_limit: usize,
+    /// A number of signatures that one keypair can generate.
+    pub key_lifetime: usize,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord, Clone)]
@@ -426,7 +428,7 @@ macro_rules! log_graph {
         let outputfile = Stdio::from(file);
 
         let mut output = Command::new("echo")
-            .arg(&format!("{}", "digraph { a -> b -> c }"))
+            .arg(&format!("{}", $graph))
             .stdout(Stdio::piped())
             .spawn()
             .expect("failed to execute process");
@@ -434,13 +436,14 @@ macro_rules! log_graph {
         let pipe = output.stdout.take().unwrap();
 
         let grep = Command::new("dot")
-            .arg("-Tsvg")
+            .arg("-T")
+            .arg("svg")
             .stdin(pipe)
             .stdout(outputfile)
             .spawn()
             .expect("failed to execute process");
 
-        let result = grep.wait_with_output().expect("failed to wait on child");
+        grep.wait_with_output().expect("failed to wait on child");
     }};
 }
 

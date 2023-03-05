@@ -24,6 +24,7 @@ pub struct SenderParams {
     pub subscriber_lifetime: Duration,
     pub net_buffer_size: usize,
     pub datagram_size: usize,
+    pub key_lifetime: usize,
 }
 
 pub struct Sender<BlockSigner: BlockSignerTrait> {
@@ -42,6 +43,7 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
             id_filename: params.id_filename.clone(),
             target_petname: String::default(), //< Not used in `Sender`
             pub_key_layer_limit: usize::default(), //< Not used un `Sender`
+            key_lifetime: params.key_lifetime,
         };
         let signer = BlockSigner::new(block_signer_params);
 
