@@ -11,6 +11,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
+use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 // ---
@@ -18,9 +19,7 @@ use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 use xxhash_rust::xxh3::xxh3_64;
 // ---
-use crate::common;
-use crate::common::UnixTimestamp;
-use crate::traits::Config;
+use crate::common::{self, UnixTimestamp};
 use crate::utils;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
@@ -32,6 +31,9 @@ pub enum NetSenderError {}
 pub struct NetSenderParams {
     pub addr: String,
     pub running: Arc<AtomicBool>,
+    pub datagram_size: usize,
+    pub subscriber_lifetime: Duration,
+    pub net_buffer_size: usize,
 }
 
 ///
@@ -41,27 +43,27 @@ pub struct NetSenderParams {
 /// * `struct NetReceiver`
 ///
 pub struct NetSender {
+    params: NetSenderParams,
     rt: Runtime,
     /// A socked used for sending the data to the subscribers.
     sender_socket: UdpSocket,
     /// A table of the subscribed receivers with the UNIX timestamp of the current lifetime.
     subscribers: Subscribers,
-    config: Config,
 }
 
 impl NetSender {
-    pub fn new(params: NetSenderParams, config: Config) -> Self {
+    pub fn new(params: NetSenderParams) -> Self {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
         let subscribers = Subscribers::new();
 
         // Spawn the task that will accept the receiver heartbeats
         rt.spawn(Self::registrator_task(
-            params.addr,
-            params.running,
+            params.addr.clone(),
+            params.running.clone(),
             subscribers.clone(),
-            config.subscriber_lifetime.as_millis(),
-            config.net_buffer_size,
+            params.subscriber_lifetime.as_millis(),
+            params.net_buffer_size,
         ));
 
         // Spawn the sender UDP socket
@@ -71,10 +73,10 @@ impl NetSender {
         };
 
         NetSender {
+            params,
             rt,
             sender_socket,
             subscribers,
-            config,
         }
     }
 
@@ -124,7 +126,7 @@ impl NetSender {
         {
             let subs_guard = self.subscribers.0.lock().expect("Should be lockable!");
 
-            let datagrams = Self::split_to_datagrams(data, self.config.datagram_size);
+            let datagrams = Self::split_to_datagrams(data, self.params.datagram_size);
 
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)

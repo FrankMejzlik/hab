@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
 use crate::merkle_tree::MerkleTree;
-use crate::traits::{KeyPair, SignatureSchemeTrait};
+use crate::traits::{KeyPair, PublicKeyBounds, SignatureSchemeTrait};
 use crate::utils;
 
 pub type HorstKeypair<const T: usize, const N: usize> =
@@ -101,6 +101,7 @@ impl<const T: usize, const N: usize> Display for HorstSecretKey<T, N> {
 pub struct HorstPublicKey<const N: usize> {
     pub data: Vec<u8>,
 }
+impl<const N: usize> PublicKeyBounds for HorstPublicKey<N> {}
 impl<const N: usize> HorstPublicKey<N> {
     pub fn new(root_hash: &[u8; N]) -> Self {
         let mut data = vec![0u8; N];

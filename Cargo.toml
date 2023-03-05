@@ -26,7 +26,7 @@ rand = "0.8"
 lazy_static = "1.4"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 serde-big-array = "0.5"
-union-find-rs = "^0.2"
+petgraph = { version = "0.6", features=["serde-1"] }
 
 [features]
 default = ["log_input_output"]

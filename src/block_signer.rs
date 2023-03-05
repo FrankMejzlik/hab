@@ -10,6 +10,7 @@ use std::io::{Read, Write};
 use std::marker::PhantomData;
 use std::mem::swap;
 // ---
+use crate::common::BlockSignerParams;
 use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
@@ -30,21 +31,17 @@ pub use crate::horst::{
 };
 use crate::pub_key_store::PubKeyStore;
 use crate::pub_key_store::StoredPubKey;
-use crate::traits::BlockSignerParams;
-use crate::traits::BlockVerifierParams;
-use crate::traits::Config;
-use crate::traits::SignedBlockTrait;
-use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait};
+use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait, SignedBlockTrait};
 use crate::utils;
 use crate::utils::UnixTimestamp;
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
 ///
-/// Wrapper for one key.
+/// A wrapper for one key that the sender manages in it's store.
 ///
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-struct KeyCont<const T: usize, const N: usize> {
+struct KeyPairStoreCont<const T: usize, const N: usize> {
     key: HorstKeypair<T, N>,
     #[allow(dead_code)]
     last_cerified: UnixTimestamp,
@@ -54,7 +51,7 @@ struct KeyCont<const T: usize, const N: usize> {
     lifetime: usize,
 }
 
-impl<const T: usize, const N: usize> Display for KeyCont<T, N> {
+impl<const T: usize, const N: usize> Display for KeyPairStoreCont<T, N> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
             f,
@@ -66,14 +63,17 @@ impl<const T: usize, const N: usize> Display for KeyCont<T, N> {
     }
 }
 
+///
+/// A wrapper for one key that is used for the transporation over a network.
+///
 #[derive(Debug, Serialize, Deserialize)]
-pub struct KeyWrapper<Key> {
+pub struct PubKeyTransportCont<Key> {
     pub key: Key,
     pub layer: u8,
 }
-impl<Key> KeyWrapper<Key> {
+impl<Key> PubKeyTransportCont<Key> {
     pub fn new(key: Key, layer: u8) -> Self {
-        KeyWrapper { key, layer }
+        PubKeyTransportCont { key, layer }
     }
 }
 
@@ -82,7 +82,7 @@ impl<Key> KeyWrapper<Key> {
 pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize> {
     pub data: Vec<u8>,
     pub signature: Signature,
-    pub pub_keys: Vec<KeyWrapper<PublicKey>>,
+    pub pub_keys: Vec<PubKeyTransportCont<PublicKey>>,
 }
 
 impl<Signature: Serialize, PublicKey: Serialize> SignedBlockTrait
@@ -99,9 +99,9 @@ impl<Signature: Serialize, PublicKey: Serialize> SignedBlockTrait
 }
 
 #[derive(Serialize, Debug, Deserialize, PartialEq)]
-struct KeyLayers<const T: usize, const N: usize> {
+pub struct KeyLayers<const T: usize, const N: usize> {
     /// The key containers in their layers (indices).
-    data: Vec<Vec<KeyCont<T, N>>>,
+    data: Vec<Vec<KeyPairStoreCont<T, N>>>,
     /// True if the first sign is to come.
     first_sign: bool,
     /// The number of signs before the layer 0 can be used again
@@ -121,7 +121,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
     }
 
     fn insert(&mut self, level: usize, keypair: HorstKeypair<T, N>) {
-        let key_cont = KeyCont {
+        let key_cont = KeyPairStoreCont {
             key: keypair,
             last_cerified: 0,
             signs: 0,
@@ -133,7 +133,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
 
     /// Takes the key from the provided layer, updates it and
     /// returns it (also bool indicating that the new key is needed).
-    fn poll(&mut self, layer: usize) -> (KeyCont<T, N>, bool) {
+    fn poll(&mut self, layer: usize) -> (KeyPairStoreCont<T, N>, bool) {
         let resulting_key;
         {
             let signing_key = self.data[layer]
@@ -190,11 +190,11 @@ pub struct BlockSigner<
     MsgHashFn: Digest + Debug,
     TreeHashFn: Digest + Debug,
 > {
+    params: BlockSignerParams,
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
     pks: PubKeyStore<<Self as BlockSignerTrait>::PublicKey>,
     distr: DiscreteDistribution,
-    config: Config,
     _x: PhantomData<(MsgHashFn, TreeHashFn)>,
 }
 
@@ -211,9 +211,9 @@ impl<
     >
     BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
-    fn new_id(&mut self) -> SenderIdentity {
-        let id = SenderIdentity { id: self.pks.next_id };
-        self.pks.next_id +=1;
+    fn new_id(&mut self, petname: Option<String>) -> SenderIdentity {
+        let id = SenderIdentity::new(self.pks.next_id, petname);
+        self.pks.next_id += 1;
         id
     }
 
@@ -253,8 +253,6 @@ impl<
     ///
     fn prune_pks(&mut self, _max_per_layer: usize) {
 
-
-		
         // // Copy all key-timestamp pairs from the given layer
         // let mut from_layer = vec![];
         // for (k, (ts, level)) in self.pks.iter() {
@@ -281,8 +279,8 @@ impl<
     }
 
     fn store_state(&mut self) {
-        create_dir_all(&self.config.id_dir).expect("!");
-        let filepath = format!("{}/{}", self.config.id_dir, self.config.id_filename);
+        create_dir_all(&self.params.id_dir).expect("!");
+        let filepath = format!("{}/{}", self.params.id_dir, self.params.id_filename);
         {
             let mut file = File::create(filepath).expect("The file should be writable!");
 
@@ -290,7 +288,7 @@ impl<
             let layers_bytes = bincode::serialize(&self.layers).expect("!");
             let pks_bytes = bincode::serialize(&self.pks).expect("!");
             let distr_bytes = bincode::serialize(&self.distr).expect("!");
-            let config_bytes = bincode::serialize(&self.config).expect("!");
+            let config_bytes = bincode::serialize(&self.params).expect("!");
 
             file.write_u64::<LittleEndian>(rng_bytes.len() as u64)
                 .expect("!");
@@ -316,7 +314,7 @@ impl<
 
         // Check
         {
-            let filepath = format!("{}/{}", self.config.id_dir, self.config.id_filename);
+            let filepath = format!("{}/{}", self.params.id_dir, self.params.id_filename);
             let mut file = File::open(filepath).expect("!");
 
             let rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
@@ -349,17 +347,17 @@ impl<
 
             let layers =
                 bincode::deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
-            let pks =
+            let _pks =
                 bincode::deserialize::<PubKeyStore<HorstPublicKey<TREE_HASH_SIZE>>>(&pks_bytes)
                     .expect("!");
             let distr: DiscreteDistribution = bincode::deserialize(&distr_bytes).expect("!");
-            let config: Config = bincode::deserialize(&config_bytes).expect("!");
+            let config: BlockSignerParams = bincode::deserialize(&config_bytes).expect("!");
 
             assert_eq!(self.rng, rng);
             assert_eq!(self.layers, layers);
-            assert_eq!(self.pks, pks);
+            //assert_eq!(self.pks, pks);
             assert_eq!(self.distr, distr);
-            assert_eq!(self.config, config);
+            assert_eq!(self.params, config);
         }
     }
 
@@ -402,15 +400,15 @@ impl<
         let pks = bincode::deserialize::<PubKeyStore<HorstPublicKey<TREE_HASH_SIZE>>>(&pks_bytes)
             .expect("!");
         let distr: DiscreteDistribution = bincode::deserialize(&distr_bytes).expect("!");
-        let config: Config = bincode::deserialize(&config_bytes).expect("!");
+        let params: BlockSignerParams = bincode::deserialize(&config_bytes).expect("!");
 
         info!("An existing ID loaded from '{}'.", filepath);
         Some(Self {
+            params,
             rng,
             layers,
             pks,
             distr,
-            config,
             _x: PhantomData,
         })
     }
@@ -419,7 +417,7 @@ impl<
         &mut self,
     ) -> (
         SecretKey<T, TREE_HASH_SIZE>,
-        Vec<KeyWrapper<PublicKey<TREE_HASH_SIZE>>>,
+        Vec<PubKeyTransportCont<PublicKey<TREE_HASH_SIZE>>>,
     ) {
         // TODO: Detect the first sign to use only level 0
         // TODO: Restrict level 0 to be used at maximum rate
@@ -428,7 +426,7 @@ impl<
         let mut pks = vec![];
         for (l_idx, layer) in self.layers.data.iter().enumerate() {
             for k in layer.iter() {
-                pks.push(KeyWrapper::new(k.key.public.clone(), l_idx as u8));
+                pks.push(PubKeyTransportCont::new(k.key.public.clone(), l_idx as u8));
             }
         }
 
@@ -498,9 +496,9 @@ impl<
     type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
 
     /// Constructs and initializes a block signer with the given parameters.
-    fn new(params: BlockSignerParams, config: Config) -> Self {
+    fn new(params: BlockSignerParams) -> Self {
         // Try to load the identity from the disk
-        match Self::load_state(&format!("{}/{}", config.id_dir, config.id_filename)) {
+        match Self::load_state(&format!("{}/{}", params.id_dir, params.id_filename)) {
             Some(x) => {
                 info!(tag: "sender", "The existing ID was loaded.");
                 debug!(tag: "block_signer", "{}", x.dump_layers());
@@ -531,11 +529,11 @@ impl<
         }
 
         let new_inst = BlockSigner {
+            params,
             rng,
             layers,
             pks: PubKeyStore::new(),
             distr,
-            config,
             _x: PhantomData,
         };
 
@@ -605,9 +603,9 @@ impl<
     type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
 
     /// Constructs and initializes a block signer with the given parameters.
-    fn new(_params: BlockVerifierParams, config: Config) -> Self {
+    fn new(params: BlockSignerParams) -> Self {
         // Try to load the identity from the disk
-        match Self::load_state(&format!("{}/{}", config.id_dir, config.id_filename)) {
+        match Self::load_state(&format!("{}/{}", params.id_dir, params.id_filename)) {
             Some(x) => {
                 info!(tag: "receiver", "The existing ID was loaded.");
                 debug!(tag: "block_verifier", "{}", x.dump_layers());
@@ -618,11 +616,11 @@ impl<
         info!(tag: "receiver", "Creating new `BlockVerifier`.");
 
         let new_inst = BlockSigner {
+            params,
             rng: CsPrng::seed_from_u64(0), //< Not used
             layers: KeyLayers::new(0),     //< Not used
             pks: PubKeyStore::new(),
             distr: DiscreteDistribution::new(vec![]), //< Not used
-            config,
             _x: PhantomData,
         };
 
@@ -653,15 +651,24 @@ impl<
         to_verify
             .append(&mut bincode::serialize(&block.pub_keys).expect("Should be serializable!"));
 
+        //
+        // Is this the first message from the target sender?
+        if self.pks.target_id.is_none() {
+            // Generate the petnamed identity for it
+            let new_id = self.new_id(Some(self.params.target_petname.clone()));
+            info!(tag: "receiver", "(!) New identity detected: {new_id:#?} (!)");
+            self.pks.set_target_id(new_id);
+        }
+
         // Try to verify with at least one already certified key
         let mut sender_id = None;
-		let mut decrypt_pk = None;
+        let mut decrypt_pk = None;
         for (id, keys) in self.pks.keys.iter() {
             for stored_key in keys {
                 let pk = &stored_key.key;
                 let ok = Self::Signer::verify(&to_verify, &block.signature, pk);
                 if ok {
-					decrypt_pk = Some(pk.clone());
+                    decrypt_pk = Some(pk.clone());
                     sender_id = Some(id.clone());
                     break;
                 }
@@ -672,7 +679,7 @@ impl<
         let sender_id = match sender_id {
             Some(x) => x,
             None => {
-                let new_id = self.new_id();
+                let new_id = self.new_id(None);
                 info!(tag: "receiver", "(!) New identity detected: {new_id:#?} (!)");
                 self.pks.keys.insert(new_id.clone(), BTreeSet::new());
                 new_id
@@ -680,65 +687,51 @@ impl<
         };
 
         // Store all the certified public keys
-		let mut to_merge = BTreeSet::new();
+        let mut to_merge = BTreeSet::new();
         for kw in block.pub_keys.iter() {
             // If the key is not yet cached
-            let wrapped_key = StoredPubKey {
-                key: kw.key.clone(),
-                received: utils::unix_ts(),
-                layer: kw.layer,
-            };
-
-			
-
-
-
+            let wrapped_key = StoredPubKey::new(kw);
             let existing_keys = self.pks.keys.get_mut(&sender_id).expect("Should exist!");
             // Store it
             existing_keys.insert(wrapped_key);
         }
 
-		// -----------------------------------
+        // -----------------------------------
 
-		// -----------------------------------
-		if let Some(x) = decrypt_pk {
-			let wrapped_key = StoredPubKey {
-				key: x,
-				received: utils::unix_ts(),
-				layer: 0,
-			};
+        // -----------------------------------
+        if let Some(x) = decrypt_pk {
+            let wrapped_key = StoredPubKey::from_raw(x);
 
-			for (id, key_set) in self.pks.keys.iter_mut() {
-				if key_set.contains(&wrapped_key) {
-					to_merge.insert(id.clone());
-				}
-			}
-		}
-		
-		if to_merge.len() > 1 {
-			let mut it = to_merge.into_iter();
-			let mut fst = it.next().expect("Should be present!");
-			let mut snd = it.next().expect("Should be present!");
+            for (id, key_set) in self.pks.keys.iter_mut() {
+                if key_set.contains(&wrapped_key) {
+                    to_merge.insert(id.clone());
+                }
+            }
+        }
 
-			// Make sure that we're merging to the lower ID
-			if fst.id > snd.id {
-				swap(&mut fst, &mut snd)
-			}
+        if to_merge.len() > 1 {
+            let mut it = to_merge.into_iter();
+            let mut fst = it.next().expect("Should be present!");
+            let mut snd = it.next().expect("Should be present!");
 
-			info!(tag: "receiver", "(!) Merging identity {} and {} (!)",fst.id, snd.id );
+            // Make sure that we're merging to the lower ID
+            if fst.id > snd.id {
+                swap(&mut fst, &mut snd)
+            }
 
-			// To be copied
-			let mut existing_keys_snd = self.pks.keys.remove(&snd).expect("Should be there!");
-			// Where to be copied
-			let existing_keys_fst = self.pks.keys.get_mut(&fst).expect("Should exist!");
+            info!(tag: "receiver", "(!) Merging identity {} and {} (!)",fst.id, snd.id );
 
-			existing_keys_fst.append(&mut existing_keys_snd);
-		}
-		// ------------------------------------
+            // To be copied
+            let mut existing_keys_snd = self.pks.keys.remove(&snd).expect("Should be there!");
+            // Where to be copied
+            let existing_keys_fst = self.pks.keys.get_mut(&fst).expect("Should exist!");
 
+            existing_keys_fst.append(&mut existing_keys_snd);
+        }
+        // ------------------------------------
 
         // TODO: Delete the oldest PKs if you have at least four of the same level
-        self.prune_pks(self.config.max_pks);
+        self.prune_pks(self.params.pub_key_layer_limit);
 
         self.store_state();
         debug!(tag: "block_verifier", "{}", self.dump_pks());

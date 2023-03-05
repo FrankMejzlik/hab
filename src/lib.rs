@@ -7,16 +7,16 @@ mod horst;
 mod merkle_tree;
 mod net_receiver;
 mod net_sender;
+mod pub_key_store;
 mod receiver;
 mod sender;
 mod traits;
-mod pub_key_store;
 // ---
 pub mod common;
 pub mod utils;
 // ---
 pub use block_signer::BlockSigner;
-pub use traits::{Config, ReceiverTrait, SenderTrait};
-
+pub use common::Config;
 pub use receiver::{Receiver, ReceiverParams};
 pub use sender::{Sender, SenderParams};
+pub use traits::{ReceiverTrait, SenderTrait};

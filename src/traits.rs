@@ -3,37 +3,27 @@
 //!
 
 use std::error::Error as ErrorTrait;
-use std::time::Duration;
+use std::fmt::Debug;
 // ---
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
-use crate::common::{Error, ReceivedBlock, SenderIdentity, SeqNum};
+use crate::common::{BlockSignerParams, Error, ReceivedBlock, SenderIdentity};
 
 ///
-/// General config of the library.
+/// Global trait bound specifications.
 ///
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Config {
-    pub id_dir: String,
-    pub id_filename: String,
-    pub logs_dir: String,
-    pub subscriber_lifetime: Duration,
-    pub net_buffer_size: usize,
-    pub datagram_size: usize,
-    pub max_pks: usize,
-}
+/// This is a workaround with defining a new trait with supertraits.
+/// Once the trait aliases are in stable rust, it can be used instread:
+/// https://github.com/rust-lang/rust/issues/41517
+///
 
-///
-/// A structure holding additional data about the message that the protocol is transmitting.
-///
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MsgMetadata {
-    /// The sequence number of this message.
-    pub seq: SeqNum,
-}
+/// The trait bounds we appply on a `PublicKey` generic type.
+
+pub trait PublicKeyBounds: Debug + Clone + PartialEq + Eq + PartialOrd + Ord {}
+// ----------------------------------
 
 ///
 /// Provides a high-level interface for broadcasting the signed data to the subscribed receivers.
@@ -59,15 +49,6 @@ pub trait SignedBlockTrait {
     fn hash(&self) -> u64;
 }
 
-/// Struct holding parameters for the sender.
-pub struct BlockSignerParams {
-    pub seed: u64,
-    pub layers: usize,
-}
-
-/// Struct holding parameters for the sender.
-pub struct BlockVerifierParams {}
-
 ///
 /// A high-level interface for signing the block of data and receiving the block of data
 /// that is safe to be transfered via insecure channel (e.g. Internet).  
@@ -86,11 +67,11 @@ pub trait BlockSignerTrait {
     type Error: ErrorTrait;
     type Signer: SignatureSchemeTrait;
     type SecretKey;
-    type PublicKey;
+    type PublicKey: PublicKeyBounds;
     type Signature;
     type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned;
 
-    fn new(params: BlockSignerParams, config: Config) -> Self;
+    fn new(params: BlockSignerParams) -> Self;
     fn sign(&mut self, data: Vec<u8>) -> Result<Self::SignedBlock, Self::Error>;
 }
 
@@ -108,11 +89,11 @@ pub trait BlockVerifierTrait {
     type Error: ErrorTrait;
     type Signer: SignatureSchemeTrait;
     type SecretKey;
-    type PublicKey;
+    type PublicKey: PublicKeyBounds;
     type Signature;
     type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned;
 
-    fn new(params: BlockVerifierParams, config: Config) -> Self;
+    fn new(params: BlockSignerParams) -> Self;
     fn verify(&mut self, data: Vec<u8>)
         -> Result<(Vec<u8>, SenderIdentity, u64, u64), Self::Error>;
 }

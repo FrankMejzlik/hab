@@ -20,10 +20,7 @@ use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 // ---
-use crate::common::{self, SenderIdentity};
-use crate::common::{DgramHash, DgramIdx};
-use crate::common::{Error, PortNumber};
-use crate::traits::{Config, MsgMetadata};
+use crate::common::{self, DgramHash, DgramIdx, Error, MsgMetadata, PortNumber, SenderIdentity};
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
@@ -131,8 +128,9 @@ impl FragmentedBlock {
 #[derive(Debug)]
 pub struct FragmentedBlocks {
     blocks: HashMap<DgramHash, FragmentedBlock>,
+    datagram_size: usize,
+    // ---
     last_printed: SystemTime,
-    config: Config,
 }
 
 impl fmt::Display for FragmentedBlocks {
@@ -148,17 +146,17 @@ impl fmt::Display for FragmentedBlocks {
 }
 
 impl FragmentedBlocks {
-    pub fn new(config: Config) -> Self {
+    pub fn new(datagram_size: usize) -> Self {
         FragmentedBlocks {
             blocks: HashMap::new(),
             last_printed: SystemTime::now(),
-            config,
+            datagram_size,
         }
     }
 
     pub fn insert(&mut self, dgram: &[u8]) -> Option<Vec<u8>> {
         let (hash, idx, num_fragments, data) = parse_datagram(dgram);
-        let (_, _, payload_size) = common::get_datagram_sizes(self.config.datagram_size);
+        let (_, _, payload_size) = common::get_datagram_sizes(self.datagram_size);
 
         // If a new hash has come
         self.blocks
@@ -190,6 +188,8 @@ impl FragmentedBlocks {
 pub struct NetReceiverParams {
     pub addr: String,
     pub running: Arc<AtomicBool>,
+    pub datagram_size: usize,
+    pub net_buffer_size: usize,
 }
 
 ///
@@ -200,16 +200,16 @@ pub struct NetReceiverParams {
 ///
 #[allow(dead_code)]
 pub struct NetReceiver {
+    params: NetReceiverParams,
     rt: Runtime,
     socket: UdpSocket,
     blocks: FragmentedBlocks,
-    config: Config,
     delivery: DeliveryQueues,
 }
 
 impl NetReceiver {
     #[allow(dead_code)]
-    pub fn new(params: NetReceiverParams, config: Config) -> Self {
+    pub fn new(params: NetReceiverParams) -> Self {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
         // Bind on some available port
@@ -225,23 +225,23 @@ impl NetReceiver {
 
         // Spawn the task that will send periodic hearbeats to the sender
         rt.spawn(Self::heartbeat_task(
-            params.addr,
-            params.running,
+            params.addr.clone(),
+            params.running.clone(),
             socket_port,
         ));
-
+        let datagram_size = params.datagram_size;
         NetReceiver {
+            params,
             rt,
             socket,
-            blocks: FragmentedBlocks::new(config.clone()),
-            config,
+            blocks: FragmentedBlocks::new(datagram_size),
             delivery: DeliveryQueues::new(),
         }
     }
 
     pub fn receive(&mut self) -> Result<Vec<u8>, Error> {
         loop {
-            let mut buf = vec![0; self.config.net_buffer_size];
+            let mut buf = vec![0; self.params.net_buffer_size];
             let (recv, _peer) = match self.rt.block_on(self.socket.recv_from(&mut buf)) {
                 Ok(x) => x,
                 Err(e) => {

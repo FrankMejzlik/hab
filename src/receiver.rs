@@ -8,10 +8,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // ---
-use crate::common::{Error, ReceivedBlock, SenderIdentity, SeqNum};
+use crate::common::{BlockSignerParams, Error, MsgMetadata, ReceivedBlock, SenderIdentity, SeqNum};
 use crate::log_output;
 use crate::net_receiver::{NetReceiver, NetReceiverParams};
-use crate::traits::{BlockVerifierParams, BlockVerifierTrait, Config, MsgMetadata, ReceiverTrait};
+use crate::traits::{BlockVerifierTrait, ReceiverTrait};
 use xxhash_rust::xxh3::xxh3_64;
 // ---
 #[allow(unused_imports)]
@@ -19,8 +19,14 @@ use crate::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
 pub struct ReceiverParams {
-    pub addr: String,
+    pub target_addr: String,
+    pub target_name: String,
     pub running: Arc<AtomicBool>,
+    pub id_dir: String,
+    pub id_filename: String,
+    pub datagram_size: usize,
+    pub net_buffer_size: usize,
+    pub pub_key_layer_limit: usize,
 }
 
 pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'static> {
@@ -28,23 +34,29 @@ pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'sta
     #[allow(dead_code)]
     verifier: Arc<Mutex<BlockVerifier>>,
     net_receiver: Arc<Mutex<NetReceiver>>,
-	#[allow(dead_code)]
+    #[allow(dead_code)]
     prev_seqs: HashMap<SenderIdentity, SeqNum>,
 }
 
 impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifier> {
-    pub fn new(params: ReceiverParams, config: Config) -> Self {
-        let block_signer_params = BlockVerifierParams {};
-        let verifier = Arc::new(Mutex::new(BlockVerifier::new(
-            block_signer_params,
-            config.clone(),
-        )));
+    pub fn new(params: ReceiverParams) -> Self {
+        let block_signer_params = BlockSignerParams {
+            seed: 0,
+            layers: 0,
+            id_dir: params.id_dir.clone(),
+            id_filename: params.id_filename.clone(),
+            target_petname: params.target_name.clone(),
+            pub_key_layer_limit: params.pub_key_layer_limit,
+        };
+        let verifier = Arc::new(Mutex::new(BlockVerifier::new(block_signer_params)));
 
         let net_recv_params = NetReceiverParams {
-            addr: params.addr.clone(),
+            addr: params.target_addr.clone(),
             running: params.running.clone(),
+            datagram_size: params.datagram_size,
+            net_buffer_size: params.net_buffer_size,
         };
-        let net_receiver = Arc::new(Mutex::new(NetReceiver::new(net_recv_params, config)));
+        let net_receiver = Arc::new(Mutex::new(NetReceiver::new(net_recv_params)));
 
         let running_clone = params.running.clone();
         let net_receiver_clone = net_receiver.clone();

@@ -4,13 +4,12 @@
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::Duration;
 // ---
 // ---
-use crate::common::Error;
+use crate::common::{BlockSignerParams, Error, MsgMetadata};
 use crate::net_sender::{NetSender, NetSenderParams};
-use crate::traits::{
-    BlockSignerParams, BlockSignerTrait, Config, MsgMetadata, SenderTrait, SignedBlockTrait,
-};
+use crate::traits::{BlockSignerTrait, SenderTrait, SignedBlockTrait};
 #[allow(unused_imports)]
 use crate::{debug, error, info, log_input, trace, warn};
 
@@ -20,6 +19,11 @@ pub struct SenderParams {
     pub layers: usize,
     pub addr: String,
     pub running: Arc<AtomicBool>,
+    pub id_dir: String,
+    pub id_filename: String,
+    pub subscriber_lifetime: Duration,
+    pub net_buffer_size: usize,
+    pub datagram_size: usize,
 }
 
 pub struct Sender<BlockSigner: BlockSignerTrait> {
@@ -30,18 +34,25 @@ pub struct Sender<BlockSigner: BlockSignerTrait> {
     next_seq: usize,
 }
 impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
-    pub fn new(params: SenderParams, config: Config) -> Self {
+    pub fn new(params: SenderParams) -> Self {
         let block_signer_params = BlockSignerParams {
             seed: params.seed,
             layers: params.layers,
+            id_dir: params.id_dir.clone(),
+            id_filename: params.id_filename.clone(),
+            target_petname: String::default(), //< Not used in `Sender`
+            pub_key_layer_limit: usize::default(), //< Not used un `Sender`
         };
-        let signer = BlockSigner::new(block_signer_params, config.clone());
+        let signer = BlockSigner::new(block_signer_params);
 
         let net_sender_params = NetSenderParams {
             addr: params.addr.clone(),
             running: params.running.clone(),
+            subscriber_lifetime: params.subscriber_lifetime,
+            net_buffer_size: params.net_buffer_size,
+            datagram_size: params.datagram_size,
         };
-        let net_sender = NetSender::new(net_sender_params, config);
+        let net_sender = NetSender::new(net_sender_params);
 
         Sender {
             params,

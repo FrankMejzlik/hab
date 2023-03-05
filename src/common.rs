@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::error::Error as StdError;
 use std::fmt;
 use std::mem::size_of;
+use std::time::Duration;
 // ---
 use rand::{distributions::Distribution, Rng};
 // ---
@@ -30,14 +31,53 @@ pub fn get_datagram_sizes(dgram_size: usize) -> (usize, usize, usize) {
     (dgram_size, header_size, payload_size)
 }
 
+///
+/// General config of the library.
+///
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Config {
+    pub id_dir: String,
+    pub id_filename: String,
+    pub logs_dir: String,
+    pub subscriber_lifetime: Duration,
+    pub net_buffer_size: usize,
+    pub datagram_size: usize,
+    pub pub_key_layer_limit: usize,
+}
+
+///
+/// A structure holding additional data about the message that the protocol is transmitting.
+///
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MsgMetadata {
+    /// The sequence number of this message.
+    pub seq: SeqNum,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+/// Struct holding parameters for the sender.
+pub struct BlockSignerParams {
+    pub seed: u64,
+    pub layers: usize,
+    // A directory name where the identity stores will be stored.
+    pub id_dir: String,
+    // A filename where the identity sotres will be serialized.
+    pub id_filename: String,
+    // User-defined name of the target identity.
+    pub target_petname: String,
+    /// A maximum number of public keys to store per layer (before deleting the oldest ones).
+    pub pub_key_layer_limit: usize,
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord, Clone)]
 pub struct SenderIdentity {
     pub id: u64,
+    pub petname: Option<String>,
 }
 
 impl SenderIdentity {
-    pub fn new(id: u64) -> Self {
-        SenderIdentity { id }
+    pub fn new(id: SenderId, petname: Option<String>) -> Self {
+        SenderIdentity { id, petname }
     }
 }
 
@@ -351,6 +391,35 @@ macro_rules! log_output {
             .unwrap();
 
         log_file.write_all($data).unwrap();
+    }};
+}
+
+#[macro_export]
+macro_rules! log_graph {
+    ($graph:expr) => {{
+        use std::fs::File;
+        use std::process::Command;
+        use std::process::Stdio;
+
+        let file = File::create("output.svg").unwrap();
+        let outputfile = Stdio::from(file);
+
+        let mut output = Command::new("echo")
+            .arg(&format!("{}", "digraph { a -> b -> c }"))
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("failed to execute process");
+
+        let pipe = output.stdout.take().unwrap();
+
+        let grep = Command::new("dot")
+            .arg("-Tsvg")
+            .stdin(pipe)
+            .stdout(outputfile)
+            .spawn()
+            .expect("failed to execute process");
+
+        let result = grep.wait_with_output().expect("failed to wait on child");
     }};
 }
 
