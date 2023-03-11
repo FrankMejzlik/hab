@@ -600,10 +600,12 @@ impl<
     fn new(params: BlockSignerParams) -> Self {
         // Try to load the identity from the disk
         match Self::load_state(&format!("{}/{}", params.id_dir, params.id_filename)) {
-            Some(x) => {
+            Some(mut x) => {
                 info!(tag: "receiver", "The existing ID was loaded.");
                 debug!(tag: "block_verifier", "{}", x.dump_layers());
-                info!(tag: "receiver", "X: {:?}", x.pks.target_id);
+                // (!)
+                x.params.target_petname = params.target_petname;
+                // (!)
                 return x;
             }
             None => info!(tag: "receiver", "No existing ID found, creating a new one."),
@@ -634,45 +636,54 @@ impl<
         to_verify.append(&mut serialize(&signed_block.pub_keys).expect(constants::EX_SER));
 
         // Is this the first message from the target sender (we'll put the pubkeys directly to it's identity)?
-        let all_to_identity = if self.pks.target_id.is_none() {
+        let all_to_identity = if let Some(old_id) = self.pks.get_id_cc(&self.params.target_petname)
+        {
+            info!(tag: "receiver", "(!) Using the existing ID: {:?} (!)", old_id.0.petname);
+            self.pks.set_target_id(old_id.0.clone());
+            false
+        } else {
             // Generate the petnamed identity for the target sender
             let new_id = self.new_id(Some(self.params.target_petname.clone()));
             info!(tag: "receiver", "(!) Generating a new trusted identity with keys from the first message: {new_id:#?} (!)");
             self.pks.set_target_id(new_id);
             true
-        } else {
-            false
         };
-
-        let mut verification = MsgVerification::Unverified; //< By default it's unverified
-        let mut certificating_key_idx = None;
-        // Iterate over all keys that have been certified by the target sender
-        for (v_idx, key_cont) in self.pks.target_keys_iter() {
-            debug!(tag: "receiver", "key_cont: {key_cont:?}");
-
-            // Verify with this pubkey
-            if Self::Signer::verify(&to_verify, &signed_block.signature, &key_cont.key) {
-                let target_sender = self
-                    .pks
-                    .get_target_id()
-                    .expect("The target sender should be already set!");
-                assert!(
-                    key_cont.certified_by.contains(&target_sender),
-                    "The target sender should have already certified this key."
-                );
-                debug!(tag: "receiver", "Verified with key: {key_cont:?}");
-
-                verification = MsgVerification::Certified(target_sender);
-                certificating_key_idx = Some(v_idx);
-                break;
-            }
-        }
-        assert!(!(certificating_key_idx.is_some() && all_to_identity), "Cannot be first message from the target identity and verified message at the same time!");
 
         let sender_id = self
             .pks
             .get_target_id()
             .expect("The target sender should be already set!");
+
+        let mut verification = if all_to_identity {
+            MsgVerification::Verified(sender_id.clone())
+        } else {
+            MsgVerification::Unverified //< By default it's unverified
+        };
+
+        let mut certificating_key_idx = None;
+        // Iterate over all keys that have been certified by the target sender
+        for (v_idx, key_cont) in self.pks.target_keys_iter() {
+            // Verify with this pubkey
+            if Self::Signer::verify(&to_verify, &signed_block.signature, &key_cont.key) {
+                assert!(
+                    key_cont.certified_by.contains(&sender_id),
+                    "The target sender should have already certified this key."
+                );
+                trace!(tag: "receiver", "Verified with key: {key_cont:?}");
+
+                verification = MsgVerification::Certified(sender_id.clone());
+                certificating_key_idx = Some(v_idx);
+
+                // Is this the matching identity node?
+                if let Some(x) = key_cont.id.clone() {
+                    if x == sender_id {
+                        verification = MsgVerification::Verified(sender_id.clone());
+                    }
+                }
+                break;
+            }
+        }
+        assert!(!(certificating_key_idx.is_some() && all_to_identity), "Cannot be first message from the target identity and verified message at the same time!");
 
         // If the message was verified with at least certified key
         if certificating_key_idx.is_some() {

@@ -3,7 +3,6 @@
 //!
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::error::Error as StdError;
 use std::fmt;
 use std::mem::size_of;
@@ -35,6 +34,7 @@ pub fn get_datagram_sizes(dgram_size: usize) -> (usize, usize, usize) {
 ///
 /// Enum describing the states of message verification that can happen.
 ///
+#[derive(Debug)]
 pub enum MsgVerification {
     /// Not send by the target identity nor someone certified by it.
     Unverified,
@@ -80,11 +80,11 @@ pub struct MsgMetadata {
 pub struct BlockSignerParams {
     pub seed: u64,
     pub layers: usize,
-    // A directory name where the identity stores will be stored.
+    /// A directory name where the identity stores will be stored.
     pub id_dir: String,
-    // A filename where the identity sotres will be serialized.
+    /// A filename where the identity sotres will be serialized.
     pub id_filename: String,
-    // User-defined name of the target identity.
+    /// User-defined name of the target identity.
     pub target_petname: String,
     /// A maximum number of public keys to store per layer (before deleting the oldest ones).
     pub pub_key_layer_limit: usize,
@@ -106,21 +106,12 @@ impl SenderIdentity {
 
 pub struct ReceivedBlock {
     pub data: Vec<u8>,
-    pub sender: SenderIdentity,
-    pub sender_merge: HashSet<SenderIdentity>,
+    pub sender: MsgVerification,
 }
 
 impl ReceivedBlock {
-    pub fn new(
-        data: Vec<u8>,
-        sender: SenderIdentity,
-        sender_merge: HashSet<SenderIdentity>,
-    ) -> Self {
-        ReceivedBlock {
-            data,
-            sender,
-            sender_merge,
-        }
+    pub fn new(data: Vec<u8>, sender: MsgVerification) -> Self {
+        ReceivedBlock { data, sender }
     }
 }
 

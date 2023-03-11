@@ -2,7 +2,7 @@
 //! The main module providing high-level API for the receiver of the data.
 //!
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -10,7 +10,7 @@ use std::time::Duration;
 // ---
 use crate::common::{BlockSignerParams, Error, ReceivedBlock, SenderIdentity, SeqNum};
 use crate::log_output;
-use crate::net_receiver::{NetReceiver, NetReceiverParams};
+use crate::net_receiver::{DeliveryQueues, NetReceiver, NetReceiverParams};
 use crate::traits::{BlockVerifierTrait, ReceiverTrait};
 // ---
 #[allow(unused_imports)]
@@ -33,9 +33,9 @@ pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'sta
     params: ReceiverParams,
     #[allow(dead_code)]
     verifier: Arc<Mutex<BlockVerifier>>,
-    net_receiver: Arc<Mutex<NetReceiver>>,
     #[allow(dead_code)]
     prev_seqs: HashMap<SenderIdentity, SeqNum>,
+    delivery: Arc<Mutex<DeliveryQueues>>,
 }
 
 impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifier> {
@@ -57,20 +57,21 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
             datagram_size: params.datagram_size,
             net_buffer_size: params.net_buffer_size,
         };
-        let net_receiver = Arc::new(Mutex::new(NetReceiver::new(net_recv_params)));
 
         let running_clone = params.running.clone();
-        let net_receiver_clone = net_receiver.clone();
         let verifier_clone = verifier.clone();
 
+        let delivery = Arc::new(Mutex::new(DeliveryQueues::new()));
+        let delivery_clone = delivery.clone();
+
         std::thread::spawn(move || {
+            let mut net_receiver = NetReceiver::new(net_recv_params);
+
             while running_clone.load(Ordering::Acquire) {
                 let signed_block;
                 {
                     //< LOCK
-                    let mut net_receiver_guard =
-                        net_receiver_clone.lock().expect("Should be lockable!");
-                    signed_block = match net_receiver_guard.receive() {
+                    signed_block = match net_receiver.receive() {
                         Ok(x) => x,
                         Err(e) => {
                             warn!(tag: "receiver", "Failed to receiver from the socket! ERRROR: {e}");
@@ -92,10 +93,9 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
                         }
                     };
 
-                    let mut net_receiver_guard =
-                        net_receiver_clone.lock().expect("Should be lockable!");
+                    let mut delivery_guard = delivery_clone.lock().expect("Should be lockable!");
 
-                    net_receiver_guard.enqueue(verify_result);
+                    delivery_guard.enqueue(verify_result);
                     //< UNLOCK
                 }
             }
@@ -104,8 +104,8 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
         Receiver {
             params,
             verifier,
-            net_receiver,
             prev_seqs: HashMap::new(),
+            delivery,
         }
     }
 }
@@ -119,24 +119,31 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
             let received;
             {
                 //< LOCK
-                let mut net_rec_guard = self.net_receiver.lock().expect("Should be lockable!");
-                received = net_rec_guard.dequeue();
+                let mut delivery_guard = self.delivery.lock().expect("Should be lockable!");
+                received = delivery_guard.dequeue();
                 //< UNLOCK
             }
 
-            if let Some((msg, sender_id, _metadata, hash)) = received {
+            if let Some(verif_result) = received {
                 // // In-orderity check
                 // assert!(
-                //     _metadata.seq < *self.prev_seqs.get(&sender_id).expect("Should be there!"),
+                //     _metadata.seq < *self.prev_seqs.get(&verif_state).expect("Should be there!"),
                 //     "The messages are not delivered in-order!"
                 // );
 
                 #[cfg(feature = "log_input_output")]
                 {
-                    debug!(tag: "receiver","[{}][{hash}] {}", _metadata.seq, String::from_utf8_lossy(&msg));
-                    log_output!(_metadata.seq, hash, &msg);
+                    debug!(tag: "receiver","[{}][{}] {}", verif_result.metadata.seq, verif_result.hash, String::from_utf8_lossy(&verif_result.msg));
+                    log_output!(
+                        verif_result.metadata.seq,
+                        verif_result.hash,
+                        &verif_result.msg
+                    );
                 }
-                return Ok(ReceivedBlock::new(msg, sender_id, HashSet::new()));
+                return Ok(ReceivedBlock::new(
+                    verif_result.msg,
+                    verif_result.verification,
+                ));
             }
             std::thread::sleep(Duration::from_millis(10));
         }

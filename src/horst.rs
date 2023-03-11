@@ -118,7 +118,7 @@ impl<const N: usize> Display for HorstPublicKey<N> {
 
 impl<const N: usize> fmt::Debug for HorstPublicKey<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", utils::shorten(&utils::to_hex(&self.data), 6))
+        write!(f, "{}", utils::shorten(&utils::to_hex(&self.data), 4))
     }
 }
 

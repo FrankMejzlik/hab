@@ -20,15 +20,12 @@ use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 // ---
-use crate::common::{
-    self, DgramHash, DgramIdx, Error, MsgMetadata, MsgVerification, PortNumber, SenderIdentity,
-    VerifyResult,
-};
+use crate::common::{self, DgramHash, DgramIdx, Error, PortNumber, VerifyResult};
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
-struct DeliveryQueues {
-    data: VecDeque<(Vec<u8>, SenderIdentity, MsgMetadata, DgramHash)>,
+pub struct DeliveryQueues {
+    data: VecDeque<VerifyResult>,
 }
 
 impl DeliveryQueues {
@@ -37,18 +34,12 @@ impl DeliveryQueues {
             data: VecDeque::new(),
         }
     }
-    pub fn dequeue(&mut self) -> Option<(Vec<u8>, SenderIdentity, MsgMetadata, DgramHash)> {
+    pub fn dequeue(&mut self) -> Option<VerifyResult> {
         self.data.pop_front()
     }
 
-    pub fn enqueue(
-        &mut self,
-        msg: Vec<u8>,
-        id: SenderIdentity,
-        metadata: MsgMetadata,
-        hash: DgramHash,
-    ) {
-        self.data.push_back((msg, id, metadata, hash))
+    pub fn enqueue(&mut self, ver_res: VerifyResult) {
+        self.data.push_back(ver_res)
     }
 }
 
@@ -207,7 +198,6 @@ pub struct NetReceiver {
     rt: Runtime,
     socket: UdpSocket,
     blocks: FragmentedBlocks,
-    delivery: DeliveryQueues,
 }
 
 impl NetReceiver {
@@ -233,12 +223,12 @@ impl NetReceiver {
             socket_port,
         ));
         let datagram_size = params.datagram_size;
+
         NetReceiver {
             params,
             rt,
             socket,
             blocks: FragmentedBlocks::new(datagram_size),
-            delivery: DeliveryQueues::new(),
         }
     }
 
@@ -264,24 +254,6 @@ impl NetReceiver {
             if let Some(x) = self.blocks.insert(&dgram) {
                 return Ok(x);
             }
-        }
-    }
-
-    pub fn dequeue(&mut self) -> Option<(Vec<u8>, SenderIdentity, MsgMetadata, DgramHash)> {
-        self.delivery.dequeue()
-    }
-
-    pub fn enqueue(&mut self, ver_res: VerifyResult) {
-        match ver_res.verification {
-            MsgVerification::Certified(id) => {
-                self.delivery
-                    .enqueue(ver_res.msg, id, ver_res.metadata, ver_res.hash)
-            }
-            MsgVerification::Verified(id) => {
-                self.delivery
-                    .enqueue(ver_res.msg, id, ver_res.metadata, ver_res.hash)
-            }
-            _ => (),
         }
     }
 
