@@ -120,6 +120,14 @@ pub fn unix_ts_to_string(ts: UnixTimestamp) -> String {
     datetime.format("%d-%m-%Y %H:%M:%S").to_string()
 }
 
+///
+/// For the provided certificate interval computes the certificate window length.
+/// AKA: A number of certificates to keep (and certify) per layer.
+///
+pub fn calc_cert_window(ci: usize) -> usize {
+    2 * ci + 1
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;

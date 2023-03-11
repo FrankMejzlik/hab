@@ -114,16 +114,19 @@ pub struct KeyLayers<const T: usize, const N: usize> {
     next_seq: u64,
     /// A number of signatures that one keypair can generate.
     key_lifetime: usize,
+    /// A number of certificates to keep per layer.
+    cert_window: usize,
 }
 
 impl<const T: usize, const N: usize> KeyLayers<T, N> {
-    pub fn new(depth: usize, key_lifetime: usize) -> Self {
+    pub fn new(depth: usize, key_lifetime: usize, cert_interval: usize) -> Self {
         KeyLayers {
             data: vec![vec![]; depth],
             first_sign: true,
             until_top: 0,
             next_seq: 0,
             key_lifetime,
+            cert_window: utils::calc_cert_window(cert_interval),
         }
     }
 
@@ -138,14 +141,15 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
         self.data[level].push(key_cont);
     }
 
+    ///
     /// Takes the key from the provided layer, updates it and
     /// returns it (also bool indicating that the new key is needed).
+    ///
     fn poll(&mut self, layer: usize) -> (KeyPairStoreCont<T, N>, bool) {
+        let signing_idx = self.cert_window / 2;
         let resulting_key;
         {
-            let signing_key = self.data[layer]
-                .first_mut()
-                .expect("At least one key per layer must be there!");
+            let signing_key = &mut self.data[layer][signing_idx];
             signing_key.signs += 1;
             signing_key.last_cerified = utils::unix_ts();
             resulting_key = signing_key.clone();
@@ -413,8 +417,7 @@ impl<
         SecretKey<T, TREE_HASH_SIZE>,
         Vec<PubKeyTransportCont<PublicKey<TREE_HASH_SIZE>>>,
     ) {
-        // TODO: Detect the first sign to use only level 0
-        // TODO: Restrict level 0 to be used at maximum rate
+        // TODO: Use key pauses
 
         // Send all public keys
         let mut pks = vec![];
@@ -515,11 +518,16 @@ impl<
 
         // Initially populate the layers with keys
         let mut rng = CsPrng::seed_from_u64(params.seed);
-        let mut layers = KeyLayers::new(params.layers, params.key_lifetime);
+
+        // We generate `cert_interval` keys backward and `cert_interval` keys forward
+        let cw_size = utils::calc_cert_window(params.cert_interval);
+
+        let mut layers = KeyLayers::new(params.layers, params.key_lifetime, params.cert_interval);
         for l_idx in 0..params.layers {
-            // Two key at all times on all layers
-            layers.insert(l_idx, Self::Signer::gen_key_pair(&mut rng));
-            layers.insert(l_idx, Self::Signer::gen_key_pair(&mut rng));
+            // Generate the desired number of keys per layer to forward & backward certify them
+            for _ in 0..cw_size {
+                layers.insert(l_idx, Self::Signer::gen_key_pair(&mut rng));
+            }
         }
 
         let new_inst = BlockSigner {
@@ -611,11 +619,11 @@ impl<
             None => info!(tag: "receiver", "No existing ID found, creating a new one."),
         };
         info!(tag: "receiver", "Creating new `BlockVerifier`.");
-
+        let cert_int = params.cert_interval;
         let new_inst = BlockSigner {
             params,
-            rng: CsPrng::seed_from_u64(0), //< Not used
-            layers: KeyLayers::new(0, 0),  //< Not used
+            rng: CsPrng::seed_from_u64(0),          //< Not used
+            layers: KeyLayers::new(0, 0, cert_int), //< Not used
             pks: PubKeyStore::new(),
             distr: DiscreteDistribution::new(vec![]), //< Not used
             _x: PhantomData,

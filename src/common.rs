@@ -90,6 +90,8 @@ pub struct BlockSignerParams {
     pub pub_key_layer_limit: usize,
     /// A number of signatures that one keypair can generate.
     pub key_lifetime: usize,
+    /// A number of keys to certify forward (and backward).
+    pub cert_interval: usize,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord, Clone)]

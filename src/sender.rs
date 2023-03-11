@@ -25,6 +25,7 @@ pub struct SenderParams {
     pub net_buffer_size: usize,
     pub datagram_size: usize,
     pub key_lifetime: usize,
+    pub cert_interval: usize,
 }
 
 pub struct Sender<BlockSigner: BlockSignerTrait> {
@@ -44,6 +45,7 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
             target_petname: String::default(), //< Not used in `Sender`
             pub_key_layer_limit: usize::default(), //< Not used un `Sender`
             key_lifetime: params.key_lifetime,
+            cert_interval: params.cert_interval,
         };
         let signer = BlockSigner::new(block_signer_params);
 
