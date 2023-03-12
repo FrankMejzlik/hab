@@ -173,9 +173,21 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
         //
         // Determine what keys to certify with this key
         //
+
         let mut pks = vec![];
+        // The first keys is the one to use for verification
+        pks.push(PubKeyTransportCont::new(
+            resulting_key.key.public.clone(),
+            layer as u8,
+        ));
+
+        // Fill in the rest of pubkeys
         for (l_idx, layer) in self.data.iter_mut().enumerate() {
             for k in layer.iter_mut() {
+                // Skip the signing key
+                if k.key.public == resulting_key.key.public {
+                    continue;
+                }
                 pks.push(PubKeyTransportCont::new(k.key.public.clone(), l_idx as u8));
                 k.cert_count += 1;
             }
@@ -661,10 +673,13 @@ impl<
             MsgVerification::Unverified //< By default it's unverified
         };
 
+        let verify_hint =
+            StoredPubKey::new_empty(signed_block.pub_keys.first().expect("Should be there!"));
+        let verify_ours = self.pks.get_key(&verify_hint);
+
+        // Verify with this pubkey
         let mut certificating_key_idx = None;
-        // Iterate over all keys that have been certified by the target sender
-        for (v_idx, key_cont) in self.pks.target_keys_iter() {
-            // Verify with this pubkey
+        if let Some((verify_idx, key_cont)) = verify_ours {
             if Self::Signer::verify(&to_verify, &signed_block.signature, &key_cont.key) {
                 assert!(
                     key_cont.certified_by.contains(&sender_id),
@@ -673,15 +688,14 @@ impl<
                 trace!(tag: "receiver", "Verified with key: {key_cont:?}");
 
                 verification = MsgVerification::Certified(sender_id.clone());
-                certificating_key_idx = Some(v_idx);
+                certificating_key_idx = Some(verify_idx);
 
-                // Is this the matching identity node?
+                // How strong is this verification?
                 if let Some(x) = key_cont.id.clone() {
                     if x == sender_id {
                         verification = MsgVerification::Verified(sender_id.clone());
                     }
                 }
-                break;
             }
         }
         assert!(!(certificating_key_idx.is_some() && all_to_identity), "Cannot be first message from the target identity and verified message at the same time!");

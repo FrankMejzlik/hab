@@ -62,6 +62,15 @@ impl<PublicKey: PublicKeyBounds> PartialOrd for StoredPubKey<PublicKey> {
 }
 
 impl<PublicKey: PublicKeyBounds> StoredPubKey<PublicKey> {
+    pub fn new_empty(key_cont: &PubKeyTransportCont<PublicKey>) -> Self {
+        Self {
+            key: key_cont.key.clone(),
+            layer: 0,
+            received: 0,
+            id: None,
+            certified_by: vec![],
+        }
+    }
     pub fn new_with_identity(
         key_cont: &PubKeyTransportCont<PublicKey>,
         id: SenderIdentity,
@@ -119,6 +128,24 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
             next_id: 0,
             target_id: None,
             cert_window: 2 * utils::calc_cert_window(cert_interval) - 1,
+        }
+    }
+
+    pub fn get_key(
+        &self,
+        key: &StoredPubKey<PublicKey>,
+    ) -> Option<(usize, &StoredPubKey<PublicKey>)> {
+        let idx = self.pk_to_node_idx.get(key);
+
+        if let Some(x) = idx {
+            let node = self.graph.node_weight(*x);
+            if let Some(y) = node {
+                Some((x.index(), y))
+            } else {
+                None
+            }
+        } else {
+            None
         }
     }
 
@@ -225,24 +252,24 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         self.graph.add_edge(from.into(), fst_key_node.into(), ());
     }
 
-    pub fn target_keys_iter(&self) -> impl Iterator<Item = (usize, &StoredPubKey<PublicKey>)> {
-        self.graph
-            .node_indices()
-            .filter_map(move |i| match self.graph.node_weight(i) {
-                Some(node) => {
-                    if let Some(id) = &self.target_id {
-                        if node.certified_by.contains(id) {
-                            Some((i.index(), node))
-                        } else {
-                            None
-                        }
-                    } else {
-                        Some((i.index(), node))
-                    }
-                }
-                _ => None,
-            })
-    }
+    // pub fn target_keys_iter(&self) -> impl Iterator<Item = (usize, &StoredPubKey<PublicKey>)> {
+    //     self.graph
+    //         .node_indices()
+    //         .filter_map(move |i| match self.graph.node_weight(i) {
+    //             Some(node) => {
+    //                 if let Some(id) = &self.target_id {
+    //                     if node.certified_by.contains(id) {
+    //                         Some((i.index(), node))
+    //                     } else {
+    //                         None
+    //                     }
+    //                 } else {
+    //                     Some((i.index(), node))
+    //                 }
+    //             }
+    //             _ => None,
+    //         })
+    // }
 
     pub fn proces_nodes(&mut self) {
         let mut sccs = tarjan_scc(&self.graph);
