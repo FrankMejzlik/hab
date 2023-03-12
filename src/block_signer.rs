@@ -49,22 +49,20 @@ use crate::{debug, error, info, trace, warn};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct KeyPairStoreCont<const T: usize, const N: usize> {
     key: HorstKeypair<T, N>,
-    #[allow(dead_code)]
     last_cerified: UnixTimestamp,
-    #[allow(dead_code)]
-    signs: usize,
-    #[allow(dead_code)]
     lifetime: usize,
+    cert_count: usize,
 }
 
 impl<const T: usize, const N: usize> Display for KeyPairStoreCont<T, N> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
             f,
-            "{} -> | {} | {:02} |",
-            utils::shorten(&utils::to_hex(&self.key.public.data), 10),
-            utils::unix_ts_to_string(self.last_cerified),
-            self.lifetime - self.signs,
+            "{} -> {:02} ({:03})",
+            utils::shorten(&utils::to_hex(&self.key.public.data), 6),
+            //utils::unix_ts_to_string(self.last_cerified),
+            self.lifetime,
+            self.cert_count
         )
     }
 }
@@ -134,8 +132,8 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
         let key_cont = KeyPairStoreCont {
             key: keypair,
             last_cerified: 0,
-            signs: 0,
             lifetime: self.key_lifetime,
+            cert_count: 0,
         };
 
         self.data[level].push(key_cont);
@@ -145,18 +143,25 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
     /// Takes the key from the provided layer, updates it and
     /// returns it (also bool indicating that the new key is needed).
     ///
-    fn poll(&mut self, layer: usize) -> (KeyPairStoreCont<T, N>, bool) {
+    fn poll(
+        &mut self,
+        layer: usize,
+    ) -> (
+        KeyPairStoreCont<T, N>,
+        bool,
+        Vec<PubKeyTransportCont<PublicKey<N>>>,
+    ) {
         let signing_idx = self.cert_window / 2;
         let resulting_key;
         {
             let signing_key = &mut self.data[layer][signing_idx];
-            signing_key.signs += 1;
+            signing_key.lifetime -= 1;
             signing_key.last_cerified = utils::unix_ts();
             resulting_key = signing_key.clone();
         }
 
         // If this key just died
-        let died = if (resulting_key.lifetime - resulting_key.signs) == 0 {
+        let died = if (resulting_key.lifetime) == 0 {
             // Remove it
             self.data[layer].remove(0);
             // And indicate that we need a new one
@@ -165,8 +170,19 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
             false
         };
 
+        //
+        // Determine what keys to certify with this key
+        //
+        let mut pks = vec![];
+        for (l_idx, layer) in self.data.iter_mut().enumerate() {
+            for k in layer.iter_mut() {
+                pks.push(PubKeyTransportCont::new(k.key.public.clone(), l_idx as u8));
+                k.cert_count += 1;
+            }
+        }
+
         self.first_sign = false;
-        (resulting_key, died)
+        (resulting_key, died, pks)
     }
 }
 
@@ -177,7 +193,7 @@ impl<const T: usize, const N: usize> Display for KeyLayers<T, N> {
         for (l_idx, layer) in self.data.iter().enumerate() {
             for (i, kc) in layer.iter().enumerate() {
                 res.push_str(&format!("[{}] {} ", l_idx, kc));
-                if i % 2 == 1 {
+                if i % self.cert_window == (self.cert_window - 1) {
                     res.push('\n')
                 } else {
                     res.push_str("++ ");
@@ -252,21 +268,6 @@ impl<
             "{:?}",
             Dot::with_config(&self.pks.graph, &[Config::EdgeNoLabel])
         )
-
-        // let mut res = String::new();
-        // res.push_str("=== RECEIVER: Public keys ===\n");
-        // for (id, key_set) in self.pks.keys.iter() {
-        //     res.push_str(&format!("--- IDENTITY: {id:?} ---"));
-        //     for pk in key_set.iter() {
-        //         res.push_str(&format!(
-        //             "\t[{}]\t{} -> | {} |\n",
-        //             pk.layer,
-        //             pk.key,
-        //             utils::unix_ts_to_string(pk.received)
-        //         ));
-        //     }
-        // }
-        // res
     }
 
     ///
@@ -419,14 +420,6 @@ impl<
     ) {
         // TODO: Use key pauses
 
-        // Send all public keys
-        let mut pks = vec![];
-        for (l_idx, layer) in self.layers.data.iter().enumerate() {
-            for k in layer.iter() {
-                pks.push(PubKeyTransportCont::new(k.key.public.clone(), l_idx as u8));
-            }
-        }
-
         // Sample what layer to use
         let sign_layer = if self.layers.first_sign {
             debug!(tag:"sender", "The first ever sign is using layer 0");
@@ -437,7 +430,7 @@ impl<
         debug!(tag:"sender", "Signing with key from the layer {sign_layer}...");
 
         // Poll the key
-        let (signing_key, died) = self.layers.poll(sign_layer);
+        let (signing_key, died, pks) = self.layers.poll(sign_layer);
 
         // If needed generate a new key for the given layer
         if died {
@@ -534,7 +527,7 @@ impl<
             params,
             rng,
             layers,
-            pks: PubKeyStore::new(),
+            pks: PubKeyStore::new(0),
             distr,
             _x: PhantomData,
         };
@@ -624,7 +617,7 @@ impl<
             params,
             rng: CsPrng::seed_from_u64(0),          //< Not used
             layers: KeyLayers::new(0, 0, cert_int), //< Not used
-            pks: PubKeyStore::new(),
+            pks: PubKeyStore::new(cert_int),
             distr: DiscreteDistribution::new(vec![]), //< Not used
             _x: PhantomData,
         };
@@ -714,6 +707,22 @@ impl<
                 id_keys.push(StoredPubKey::new_with_identity(&kw, sender_id.clone()));
             }
             self.pks.insert_identity_keys(id_keys);
+        }
+
+        // Handle SCCs & identities
+        self.pks.proces_nodes();
+
+        // Remove obsoltete keys
+        self.pks.prune_graph();
+
+        // Check if the key has not become the part of the identity
+        if let Some(x) = certificating_key_idx {
+            let decrypt_node = self.pks.get_node(x).expect("Should be set!");
+            if let Some(y) = decrypt_node.id.clone() {
+                if y == sender_id {
+                    verification = MsgVerification::Verified(sender_id.clone());
+                }
+            }
         }
 
         self.store_state();
