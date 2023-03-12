@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 // ---
 // ---
-use crate::common::{BlockSignerParams, Error, MsgMetadata};
+use crate::common::{BlockSignerParams, Error, MsgMetadata, SeqNum};
 use crate::net_sender::{NetSender, NetSenderParams};
 use crate::traits::{BlockSignerTrait, SenderTrait, SignedBlockTrait};
 #[allow(unused_imports)]
@@ -33,7 +33,7 @@ pub struct Sender<BlockSigner: BlockSignerTrait> {
     params: SenderParams,
     signer: BlockSigner,
     net_sender: NetSender,
-    next_seq: usize,
+    next_seq: SeqNum,
 }
 impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
     pub fn new(params: SenderParams) -> Self {

@@ -9,8 +9,9 @@ use std::time::Duration;
 
 // ---
 use crate::common::{BlockSignerParams, Error, ReceivedBlock, SenderIdentity, SeqNum};
+use crate::delivery_queues::DeliveryQueues;
 use crate::log_output;
-use crate::net_receiver::{DeliveryQueues, NetReceiver, NetReceiverParams};
+use crate::net_receiver::{NetReceiver, NetReceiverParams};
 use crate::traits::{BlockVerifierTrait, ReceiverTrait};
 // ---
 #[allow(unused_imports)]

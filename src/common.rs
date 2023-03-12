@@ -19,7 +19,7 @@ pub type PortNumber = u16;
 pub type DgramHash = u64;
 pub type MsgSignPubkeysChecksum = u64;
 pub type DgramIdx = u32;
-pub type SeqNum = usize;
+pub type SeqNum = u64;
 pub type SenderId = u64;
 
 pub const LOGS_DIR: &str = "logs/";

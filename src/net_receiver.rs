@@ -2,7 +2,7 @@
 //! Module for receiving the data broadcasted by the `NetSender`.
 //!
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::fmt;
 use std::io::{Cursor, Read};
 use std::net::SocketAddrV4;
@@ -20,28 +20,9 @@ use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 // ---
-use crate::common::{self, DgramHash, DgramIdx, Error, PortNumber, VerifyResult};
+use crate::common::{self, DgramHash, DgramIdx, Error, PortNumber};
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
-
-pub struct DeliveryQueues {
-    data: VecDeque<VerifyResult>,
-}
-
-impl DeliveryQueues {
-    pub fn new() -> Self {
-        DeliveryQueues {
-            data: VecDeque::new(),
-        }
-    }
-    pub fn dequeue(&mut self) -> Option<VerifyResult> {
-        self.data.pop_front()
-    }
-
-    pub fn enqueue(&mut self, ver_res: VerifyResult) {
-        self.data.push_back(ver_res)
-    }
-}
 
 pub fn parse_datagram(data: &[u8]) -> (DgramHash, DgramIdx, DgramIdx, Vec<u8>) {
     let mut in_cursor = Cursor::new(data);

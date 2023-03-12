@@ -11,6 +11,7 @@ use std::marker::PhantomData;
 use crate::common::BlockSignerParams;
 use crate::common::MsgMetadata;
 use crate::common::MsgVerification;
+use crate::common::SeqNum;
 use crate::common::VerifyResult;
 use crate::constants;
 use crate::log_graph;
@@ -256,12 +257,11 @@ impl<
     fn read_metadata(mut msg: Vec<u8>) -> (MsgMetadata, Vec<u8>) {
         let len = msg.len() - std::mem::size_of::<usize>();
 
-        let seq = usize::from_le_bytes(
+        let seq = SeqNum::from_le_bytes(
             msg[len..]
                 .try_into()
                 .expect("Should have a correct length!"),
         );
-        debug!("seq: {seq}");
         msg.drain(len..);
         (MsgMetadata { seq }, msg)
     }
@@ -651,7 +651,7 @@ impl<
         // Is this the first message from the target sender (we'll put the pubkeys directly to it's identity)?
         let all_to_identity = if let Some(old_id) = self.pks.get_id_cc(&self.params.target_petname)
         {
-            info!(tag: "receiver", "(!) Using the existing ID: {:?} (!)", old_id.0.petname);
+            trace!(tag: "receiver", "(!) Using the existing ID: {:?} (!)", old_id.0.petname);
             self.pks.set_target_id(old_id.0.clone());
             false
         } else {
@@ -700,12 +700,16 @@ impl<
         }
         assert!(!(certificating_key_idx.is_some() && all_to_identity), "Cannot be first message from the target identity and verified message at the same time!");
 
+        // Read the metadata from the message
+        let (metadata, msg) = Self::read_metadata(signed_block.data);
+
         // If the message was verified with at least certified key
         if certificating_key_idx.is_some() {
             // Store all the certified public keys under the target identity
             for kw in signed_block.pub_keys.iter() {
                 // Get a key to store
-                let key_to_store = StoredPubKey::new_with_certified(kw, sender_id.clone());
+                let key_to_store =
+                    StoredPubKey::new_with_certified(kw, sender_id.clone(), metadata.seq);
 
                 // Insert the key to the graph
                 self.pks.insert_key(
@@ -718,7 +722,11 @@ impl<
         else if all_to_identity {
             let mut id_keys = vec![];
             for kw in signed_block.pub_keys {
-                id_keys.push(StoredPubKey::new_with_identity(&kw, sender_id.clone()));
+                id_keys.push(StoredPubKey::new_with_identity(
+                    &kw,
+                    sender_id.clone(),
+                    metadata.seq,
+                ));
             }
             self.pks.insert_identity_keys(id_keys);
         }
@@ -743,9 +751,6 @@ impl<
         let dump = self.dump_pks();
         debug!(tag: "block_verifier", "{}", dump);
         log_graph!(dump);
-
-        // Read the metadata from the message
-        let (metadata, msg) = Self::read_metadata(signed_block.data);
 
         Ok(VerifyResult {
             msg,

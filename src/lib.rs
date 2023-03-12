@@ -3,6 +3,7 @@
 //!
 mod block_signer;
 mod constants;
+mod delivery_queues;
 mod diag_server;
 mod horst;
 mod merkle_tree;

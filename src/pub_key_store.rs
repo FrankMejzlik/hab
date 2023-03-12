@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 // ---
 use crate::block_signer::PubKeyTransportCont;
+use crate::common::SeqNum;
 //use petgraph::algo::has_path_connecting;
 use serde::{Deserialize, Serialize};
 // ---
@@ -26,6 +27,7 @@ pub struct StoredPubKey<PublicKey: PublicKeyBounds> {
     pub key: PublicKey,
     pub layer: u8,
     pub received: UnixTimestamp,
+    pub receiverd_seq: u64,
     pub id: Option<SenderIdentity>,
     pub certified_by: Vec<SenderIdentity>,
 }
@@ -67,6 +69,7 @@ impl<PublicKey: PublicKeyBounds> StoredPubKey<PublicKey> {
             key: key_cont.key.clone(),
             layer: 0,
             received: 0,
+            receiverd_seq: 0,
             id: None,
             certified_by: vec![],
         }
@@ -74,11 +77,13 @@ impl<PublicKey: PublicKeyBounds> StoredPubKey<PublicKey> {
     pub fn new_with_identity(
         key_cont: &PubKeyTransportCont<PublicKey>,
         id: SenderIdentity,
+        seq: u64,
     ) -> Self {
         Self {
             key: key_cont.key.clone(),
             layer: key_cont.layer,
             received: utils::unix_ts(),
+            receiverd_seq: seq,
             id: Some(id.clone()),
             certified_by: vec![id],
         }
@@ -86,11 +91,13 @@ impl<PublicKey: PublicKeyBounds> StoredPubKey<PublicKey> {
     pub fn new_with_certified(
         key_cont: &PubKeyTransportCont<PublicKey>,
         id: SenderIdentity,
+        seq: u64,
     ) -> Self {
         Self {
             key: key_cont.key.clone(),
             layer: key_cont.layer,
             received: utils::unix_ts(),
+            receiverd_seq: seq,
             id: None,
             certified_by: vec![id],
         }
@@ -296,7 +303,7 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
     }
 
     pub fn prune_graph(&mut self) {
-        let cmp_key = |x: &(UnixTimestamp, NodeIndex)| x.0;
+        let cmp_key = |x: &(SeqNum, NodeIndex)| x.0;
 
         let mut hist_layers = vec![];
         let mut indices_to_delete = vec![];
@@ -315,7 +322,7 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
                 hist_layers.resize(layer + 1, vec![]);
             }
 
-            (&mut hist_layers[layer]).push((key.received, idx));
+            (&mut hist_layers[layer]).push((key.receiverd_seq, idx));
         }
 
         // Sort the keys within the layers
