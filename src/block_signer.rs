@@ -566,11 +566,10 @@ impl<
             pub_keys,
         })
     }
-	fn next_seq(&mut self) -> SeqNum {
-		self.layers.next_seq +=1;
-		self.layers.next_seq
-	}
-
+    fn next_seq(&mut self) -> SeqNum {
+        self.layers.next_seq += 1;
+        self.layers.next_seq
+    }
 }
 
 impl<
@@ -647,9 +646,9 @@ impl<
 
     fn verify(&mut self, data: Vec<u8>) -> Result<VerifyResult, Error> {
         let signed_block: Self::SignedBlock = match deserialize(&data) {
-			Ok(x) =>x,
-			Err(_) => return Err(Error::new(constants::DESER_FAILED))
-		};
+            Ok(x) => x,
+            Err(_) => return Err(Error::new(constants::DESER_FAILED)),
+        };
         let hash = signed_block.hash();
 
         // Signature MUST be verified also with public keys attached
@@ -712,7 +711,7 @@ impl<
         let (metadata, msg) = Self::read_metadata(signed_block.data);
 
         // If the message was verified with at least certified key
-        if certificating_key_idx.is_some() {
+        if let Some(key_idx) = certificating_key_idx {
             // Store all the certified public keys under the target identity
             for kw in signed_block.pub_keys.iter() {
                 // Get a key to store
@@ -720,10 +719,7 @@ impl<
                     StoredPubKey::new_with_certified(kw, sender_id.clone(), metadata.seq);
 
                 // Insert the key to the graph
-                self.pks.insert_key(
-                    certificating_key_idx.expect("Should be some."),
-                    key_to_store,
-                );
+                self.pks.insert_key(key_idx, key_to_store);
             }
         }
         // If the first message we put all the keys into the identity
@@ -750,7 +746,7 @@ impl<
             let decrypt_node = self.pks.get_node(x).expect("Should be set!");
             if let Some(y) = decrypt_node.id.clone() {
                 if y == sender_id {
-                    verification = MsgVerification::Verified(sender_id.clone());
+                    verification = MsgVerification::Verified(sender_id);
                 }
             }
         }

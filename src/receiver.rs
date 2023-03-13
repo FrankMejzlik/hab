@@ -28,7 +28,7 @@ pub struct ReceiverParams {
     pub pub_key_layer_limit: usize,
     pub key_lifetime: usize,
     pub cert_interval: usize,
-	pub delivery_deadline: Duration,
+    pub delivery_deadline: Duration,
 }
 
 pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'static> {
@@ -64,9 +64,9 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
         let running_clone = params.running.clone();
         let verifier_clone = verifier.clone();
 
-        let delivery = Arc::new(Mutex::new(DeliveryQueues::new(DeliveryQueuesParams{
-			deadline: params.delivery_deadline
-		})));
+        let delivery = Arc::new(Mutex::new(DeliveryQueues::new(DeliveryQueuesParams {
+            deadline: params.delivery_deadline,
+        })));
         let delivery_clone = delivery.clone();
 
         std::thread::spawn(move || {

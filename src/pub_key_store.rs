@@ -146,11 +146,7 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
 
         if let Some(x) = idx {
             let node = self.graph.node_weight(*x);
-            if let Some(y) = node {
-                Some((x.index(), y))
-            } else {
-                None
-            }
+            node.map(|y| (x.index(), y))
         } else {
             None
         }
@@ -184,11 +180,7 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
     /// Gets the target identity that we're subscribed to.
     ///
     pub fn get_target_id(&self) -> Option<SenderIdentity> {
-        if let Some(x) = self.target_id.clone() {
-            Some(x)
-        } else {
-            None
-        }
+        self.target_id.clone()
     }
 
     pub fn add_node(&mut self, pk: StoredPubKey<PublicKey>) -> NodeIndex {
@@ -216,18 +208,13 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         let to_node = if self.pk_to_node_idx.contains_key(&key) {
             *self.pk_to_node_idx.get(&key).expect("Should be present!")
         } else {
-            self.add_node(key.clone())
+            self.add_node(key)
         };
 
         // Only add the edge if does not exist already
         //if !has_path_connecting(&self.graph, from, to_node.into(), None) {
-        if self
-            .graph
-            .edges_connecting(from, to_node.into())
-            .next()
-            .is_none()
-        {
-            self.graph.add_edge(from, to_node.into(), ());
+        if self.graph.edges_connecting(from, to_node).next().is_none() {
+            self.graph.add_edge(from, to_node, ());
         }
     }
 
@@ -240,23 +227,23 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
             }
         }
 
-        assert!(keys.len() > 0, "There must be at least one key!");
+        assert!(!keys.is_empty(), "There must be at least one key!");
         let mut keys_it = keys.into_iter();
 
         // Insert the first key
         let fst_key = keys_it.next().expect("There must be at least one key!");
-        let fst_key_node = self.add_node(fst_key.clone());
+        let fst_key_node = self.add_node(fst_key);
         let mut from = fst_key_node;
 
         // We create one huge cycle
         for k in keys_it {
             let to = self.add_node(k.clone());
-            self.graph.add_edge(from.into(), to.into(), ());
+            self.graph.add_edge(from, to, ());
             from = to;
         }
 
         // Add the edge from the last to the first
-        self.graph.add_edge(from.into(), fst_key_node.into(), ());
+        self.graph.add_edge(from, fst_key_node, ());
     }
 
     // pub fn target_keys_iter(&self) -> impl Iterator<Item = (usize, &StoredPubKey<PublicKey>)> {
@@ -322,7 +309,7 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
                 hist_layers.resize(layer + 1, vec![]);
             }
 
-            (&mut hist_layers[layer]).push((key.receiverd_seq, idx));
+            hist_layers[layer].push((key.receiverd_seq, idx));
         }
 
         // Sort the keys within the layers
@@ -354,9 +341,7 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
             self.pk_to_node_idx.insert(key.clone(), idx);
 
             if let Some(x) = &key.id {
-                let set = (&mut self.id_to_ccomp)
-                    .get_mut(x)
-                    .expect("Should be present!");
+                let set = self.id_to_ccomp.get_mut(x).expect("Should be present!");
                 set.insert(idx);
             }
         }
