@@ -18,6 +18,7 @@ use std::time::UNIX_EPOCH;
 use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 use xxhash_rust::xxh3::xxh3_64;
+
 // ---
 use crate::common::{self, UnixTimestamp};
 use crate::utils;
@@ -49,6 +50,10 @@ pub struct NetSender {
     sender_socket: UdpSocket,
     /// A table of the subscribed receivers with the UNIX timestamp of the current lifetime.
     subscribers: Subscribers,
+
+    // ---
+    #[allow(dead_code)]
+    messages: Vec<Vec<u8>>,
 }
 
 impl NetSender {
@@ -77,6 +82,7 @@ impl NetSender {
             rt,
             sender_socket,
             subscribers,
+            messages: vec![],
         }
     }
 
@@ -122,42 +128,111 @@ impl NetSender {
     // ---
 
     pub fn broadcast(&mut self, data: &[u8]) -> Result<(), NetSenderError> {
-        let mut dead_subs = vec![];
+        #[cfg(feature = "simulate_out_of_order")]
         {
-            let subs_guard = self.subscribers.0.lock().expect("Should be lockable!");
+            use rand::seq::SliceRandom;
+            use rand::thread_rng;
 
-            let datagrams = Self::split_to_datagrams(data, self.params.datagram_size);
+            self.messages.push(data.to_vec());
 
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Should be positive.")
-                .as_millis();
-            for (dest_sock_addr, valid_until) in subs_guard.iter() {
-                // If the subscriber is dead already
-                if *valid_until < now {
-                    dead_subs.push(*dest_sock_addr);
-                    continue;
-                }
+            #[cfg(feature = "simulate_fake_msgs")]
+            {
+                use crate::block_signer::SignedBlock;
+                use crate::horst::HorstPublicKey;
+                use crate::horst::HorstSignature;
 
-                trace!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
-                for dgram in datagrams.iter() {
-                    if let Err(e) = self
-                        .rt
-                        .block_on(self.sender_socket.send_to(dgram, *dest_sock_addr))
+                let mut x: SignedBlock<HorstSignature<32, 32, 17>, HorstPublicKey<32>> =
+                    bincode::deserialize(&data).expect("!");
+                x.signature.data[0][0][0] = 0;
+                let xdata = bincode::serialize(&x).expect("!");
+                self.messages.push(xdata);
+            }
+            let mut rng = thread_rng();
+            self.messages.shuffle(&mut rng);
+
+            if self.messages.len() >= 5 {
+                for data in self.messages.iter() {
+                    let mut dead_subs = vec![];
                     {
-                        warn!("Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
-                    };
+                        let subs_guard = self.subscribers.0.lock().expect("Should be lockable!");
+
+                        let datagrams = Self::split_to_datagrams(data, self.params.datagram_size);
+
+                        let now = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .expect("Should be positive.")
+                            .as_millis();
+                        for (dest_sock_addr, valid_until) in subs_guard.iter() {
+                            // If the subscriber is dead already
+                            if *valid_until < now {
+                                dead_subs.push(*dest_sock_addr);
+                                continue;
+                            }
+
+                            trace!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
+                            for dgram in datagrams.iter() {
+                                if let Err(e) = self
+                                    .rt
+                                    .block_on(self.sender_socket.send_to(dgram, *dest_sock_addr))
+                                {
+                                    warn!("Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
+                                };
+                            }
+                        }
+                    }
+
+                    // Remove dead subscribers
+                    for dead_sub in dead_subs {
+                        self.subscribers.remove(&dead_sub);
+                        debug!(tag:"sender", "Deleted the dead subscriber '{dead_sub}'.");
+                    }
+                }
+                self.messages.clear()
+            } else {
+                debug!(tag:"sender", "Just cached the message.");
+            }
+            Ok(())
+        }
+
+        #[cfg(not(feature = "simulate_out_of_order"))]
+        {
+            let mut dead_subs = vec![];
+            {
+                let subs_guard = self.subscribers.0.lock().expect("Should be lockable!");
+
+                let datagrams = Self::split_to_datagrams(data, self.params.datagram_size);
+
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Should be positive.")
+                    .as_millis();
+                for (dest_sock_addr, valid_until) in subs_guard.iter() {
+                    // If the subscriber is dead already
+                    if *valid_until < now {
+                        dead_subs.push(*dest_sock_addr);
+                        continue;
+                    }
+
+                    trace!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
+                    for dgram in datagrams.iter() {
+                        if let Err(e) = self
+                            .rt
+                            .block_on(self.sender_socket.send_to(dgram, *dest_sock_addr))
+                        {
+                            warn!("Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
+                        };
+                    }
                 }
             }
-        }
 
-        // Remove the dead subscribers
-        for dead_sub in dead_subs {
-            self.subscribers.remove(&dead_sub);
-            debug!(tag:"sender", "Deleted the dead subscriber '{dead_sub}'.");
-        }
+            // Remove dead subscribers
+            for dead_sub in dead_subs {
+                self.subscribers.remove(&dead_sub);
+                debug!(tag:"sender", "Deleted the dead subscriber '{dead_sub}'.");
+            }
 
-        Ok(())
+            Ok(())
+        }
     }
 
     async fn registrator_task(

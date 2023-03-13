@@ -3,10 +3,10 @@
 //!
 
 use serde::{Deserialize, Serialize};
-use std::error::Error as StdError;
 use std::fmt;
 use std::mem::size_of;
 use std::time::Duration;
+use std::{cmp::Ordering, error::Error as StdError};
 // ---
 use rand::{distributions::Distribution, Rng};
 // ---
@@ -44,12 +44,33 @@ pub enum MsgVerification {
     Verified(SenderIdentity),
 }
 
+#[derive(Debug)]
 pub struct VerifyResult {
     pub msg: Vec<u8>,
     pub metadata: MsgMetadata,
     pub verification: MsgVerification,
     /// A hash computed as a combination of three parts (msg, signature, pubkeys).
     pub hash: MsgSignPubkeysChecksum,
+}
+
+impl Ord for VerifyResult {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.metadata.seq.cmp(&other.metadata.seq).reverse()
+    }
+}
+
+impl PartialOrd for VerifyResult {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.metadata.seq.cmp(&other.metadata.seq).reverse())
+    }
+}
+
+impl Eq for VerifyResult {}
+
+impl PartialEq for VerifyResult {
+    fn eq(&self, other: &Self) -> bool {
+        self.metadata.seq == other.metadata.seq
+    }
 }
 
 ///

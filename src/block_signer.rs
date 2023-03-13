@@ -566,6 +566,11 @@ impl<
             pub_keys,
         })
     }
+	fn next_seq(&mut self) -> SeqNum {
+		self.layers.next_seq +=1;
+		self.layers.next_seq
+	}
+
 }
 
 impl<
@@ -641,7 +646,10 @@ impl<
     }
 
     fn verify(&mut self, data: Vec<u8>) -> Result<VerifyResult, Error> {
-        let signed_block: Self::SignedBlock = deserialize(&data).expect(constants::EX_DESER);
+        let signed_block: Self::SignedBlock = match deserialize(&data) {
+			Ok(x) =>x,
+			Err(_) => return Err(Error::new(constants::DESER_FAILED))
+		};
         let hash = signed_block.hash();
 
         // Signature MUST be verified also with public keys attached

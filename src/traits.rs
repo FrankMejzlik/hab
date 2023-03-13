@@ -10,7 +10,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
-use crate::common::{BlockSignerParams, Error, ReceivedBlock, VerifyResult};
+use crate::common::{BlockSignerParams, Error, ReceivedBlock, VerifyResult, SeqNum};
 
 ///
 /// Global trait bound specifications.
@@ -73,6 +73,7 @@ pub trait BlockSignerTrait {
 
     fn new(params: BlockSignerParams) -> Self;
     fn sign(&mut self, data: Vec<u8>) -> Result<Self::SignedBlock, Self::Error>;
+	fn next_seq(&mut self) -> SeqNum;
 }
 
 ///

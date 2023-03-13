@@ -29,6 +29,8 @@ serde-big-array = "0.5"
 petgraph = { version = "0.6", features=["serde-1"] }
 
 [features]
-default = ["log_input_output"]
+default = []
 log_input_output = []
+simulate_out_of_order = []
+simulate_fake_msgs = []
 

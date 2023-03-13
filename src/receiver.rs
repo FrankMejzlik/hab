@@ -9,8 +9,7 @@ use std::time::Duration;
 
 // ---
 use crate::common::{BlockSignerParams, Error, ReceivedBlock, SenderIdentity, SeqNum};
-use crate::delivery_queues::DeliveryQueues;
-use crate::log_output;
+use crate::delivery_queues::{DeliveryQueues, DeliveryQueuesParams};
 use crate::net_receiver::{NetReceiver, NetReceiverParams};
 use crate::traits::{BlockVerifierTrait, ReceiverTrait};
 // ---
@@ -29,6 +28,7 @@ pub struct ReceiverParams {
     pub pub_key_layer_limit: usize,
     pub key_lifetime: usize,
     pub cert_interval: usize,
+	pub delivery_deadline: Duration,
 }
 
 pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'static> {
@@ -64,7 +64,9 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
         let running_clone = params.running.clone();
         let verifier_clone = verifier.clone();
 
-        let delivery = Arc::new(Mutex::new(DeliveryQueues::new()));
+        let delivery = Arc::new(Mutex::new(DeliveryQueues::new(DeliveryQueuesParams{
+			deadline: params.delivery_deadline
+		})));
         let delivery_clone = delivery.clone();
 
         std::thread::spawn(move || {
@@ -137,7 +139,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
                 #[cfg(feature = "log_input_output")]
                 {
                     debug!(tag: "receiver","[{}][{}] {}", verif_result.metadata.seq, verif_result.hash, String::from_utf8_lossy(&verif_result.msg));
-                    log_output!(
+                    crate::log_output!(
                         verif_result.metadata.seq,
                         verif_result.hash,
                         &verif_result.msg

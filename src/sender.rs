@@ -7,11 +7,11 @@ use std::sync::Arc;
 use std::time::Duration;
 // ---
 // ---
-use crate::common::{BlockSignerParams, Error, MsgMetadata, SeqNum};
+use crate::common::{BlockSignerParams, Error, MsgMetadata};
 use crate::net_sender::{NetSender, NetSenderParams};
-use crate::traits::{BlockSignerTrait, SenderTrait, SignedBlockTrait};
+use crate::traits::{BlockSignerTrait, SenderTrait};
 #[allow(unused_imports)]
-use crate::{debug, error, info, log_input, trace, warn};
+use crate::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
 pub struct SenderParams {
@@ -33,7 +33,6 @@ pub struct Sender<BlockSigner: BlockSignerTrait> {
     params: SenderParams,
     signer: BlockSigner,
     net_sender: NetSender,
-    next_seq: SeqNum,
 }
 impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
     pub fn new(params: SenderParams) -> Self {
@@ -62,7 +61,6 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
             params,
             signer,
             net_sender,
-            next_seq: 0,
         }
     }
 
@@ -78,13 +76,13 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
 impl<BlockSigner: BlockSignerTrait> SenderTrait for Sender<BlockSigner> {
     fn broadcast(&mut self, mut msg: Vec<u8>) -> Result<(), Error> {
         // Increment the sequence number
-        self.next_seq += 1;
+        let msg_seq = self.signer.next_seq();
 
         #[cfg(feature = "log_input_output")]
         let msg_clone = msg.clone();
 
         // Add the metadata to the message
-        Self::write_metadata(&mut msg, MsgMetadata { seq: self.next_seq });
+        Self::write_metadata(&mut msg, MsgMetadata { seq: msg_seq });
 
         // Sign along with the pubkeys
         let signed_msg = match self.signer.sign(msg) {
@@ -94,11 +92,12 @@ impl<BlockSigner: BlockSignerTrait> SenderTrait for Sender<BlockSigner> {
 
         #[cfg(feature = "log_input_output")]
         {
+            use crate::traits::SignedBlockTrait;
             // Check & log
             let hash = signed_msg.hash();
             let input_string = String::from_utf8_lossy(&msg_clone).to_string();
-            debug!(tag: "sender", "[{}][{}] {input_string}", self.next_seq, hash);
-            log_input!(self.next_seq, hash, &msg_clone);
+            debug!(tag: "sender", "[{}][{}] {input_string}", msg_seq, hash);
+            crate::log_input!(msg_seq, hash, &msg_clone);
         }
 
         // Broadcast over the network
