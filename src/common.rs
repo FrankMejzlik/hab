@@ -9,7 +9,10 @@ use std::time::Duration;
 use std::{cmp::Ordering, error::Error as StdError};
 // ---
 use rand::{distributions::Distribution, Rng};
+
 // ---
+#[allow(unused_imports)]
+use crate::{debug, error, info, trace, warn};
 
 //
 // Usefull type aliases
@@ -42,6 +45,17 @@ pub enum MsgVerification {
     Certified(SenderIdentity),
     /// Proved that the target identity signed the message.
     Verified(SenderIdentity),
+}
+
+/// The error must be printable.
+impl fmt::Display for MsgVerification {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MsgVerification::Verified(x) => write!(f, "Verified({:#?})", x.petnames),
+            MsgVerification::Certified(x) => write!(f, "Certified({:#?})", x.petnames),
+            MsgVerification::Unverified => write!(f, "Unverified"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -117,24 +131,37 @@ pub struct BlockSignerParams {
 
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord, Clone)]
 pub struct SenderIdentity {
-    pub id: u64,
-    pub petname: Option<String>,
+    pub ids: Vec<u64>,
+    pub petnames: Vec<String>,
 }
 
 impl SenderIdentity {
-    pub fn new(id: SenderId, petname: Option<String>) -> Self {
-        SenderIdentity { id, petname }
+    pub fn new(id: SenderId, petname: String) -> Self {
+        SenderIdentity {
+            ids: vec![id],
+            petnames: vec![petname],
+        }
+    }
+    pub fn merge(&mut self, mut other: SenderIdentity) {
+        self.ids.append(&mut other.ids);
+        self.petnames.append(&mut other.petnames);
+        info!(tag: "receiver", "(!) Merged IDs to {:#?}. (!)", self);
     }
 }
 
 pub struct ReceivedBlock {
     pub data: Vec<u8>,
     pub sender: MsgVerification,
+    pub metadata: MsgMetadata,
 }
 
 impl ReceivedBlock {
-    pub fn new(data: Vec<u8>, sender: MsgVerification) -> Self {
-        ReceivedBlock { data, sender }
+    pub fn new(data: Vec<u8>, sender: MsgVerification, metadata: MsgMetadata) -> Self {
+        ReceivedBlock {
+            data,
+            sender,
+            metadata,
+        }
     }
 }
 

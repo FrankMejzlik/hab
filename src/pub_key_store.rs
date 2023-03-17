@@ -6,6 +6,7 @@ use petgraph::visit::IntoNodeReferences;
 use std::cmp::{Ord, Ordering};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::vec;
 // ---
 use crate::block_signer::PubKeyTransportCont;
 use crate::common::SeqNum;
@@ -29,17 +30,23 @@ pub struct StoredPubKey<PublicKey: PublicKeyBounds> {
     pub received: UnixTimestamp,
     pub receiverd_seq: u64,
     pub id: Option<SenderIdentity>,
-    pub certified_by: Vec<SenderIdentity>,
+    pub certified_by: BTreeSet<SenderIdentity>,
 }
 
 impl<PublicKey: PublicKeyBounds> fmt::Debug for StoredPubKey<PublicKey> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let id_str = if let Some(x) = &self.id {
-            x.petname.clone().unwrap_or("".into())
+            format!("{:?}", x.petnames)
         } else {
             "".to_string()
         };
-        write!(f, "{:?}\nID: {}", self.key, id_str)
+
+        let mut c_str = String::new();
+        for x in self.certified_by.iter() {
+            c_str.push_str(&format!("{:?}", x.ids))
+        }
+
+        write!(f, "{:?}\nID: {}\n{:?}", self.key, id_str, c_str)
     }
 }
 
@@ -64,28 +71,20 @@ impl<PublicKey: PublicKeyBounds> PartialOrd for StoredPubKey<PublicKey> {
 }
 
 impl<PublicKey: PublicKeyBounds> StoredPubKey<PublicKey> {
-    pub fn new_empty(key_cont: &PubKeyTransportCont<PublicKey>) -> Self {
-        Self {
-            key: key_cont.key.clone(),
-            layer: 0,
-            received: 0,
-            receiverd_seq: 0,
-            id: None,
-            certified_by: vec![],
-        }
-    }
     pub fn new_with_identity(
         key_cont: &PubKeyTransportCont<PublicKey>,
         id: SenderIdentity,
         seq: u64,
     ) -> Self {
+        let mut certified_by = BTreeSet::new();
+        certified_by.insert(id.clone());
         Self {
             key: key_cont.key.clone(),
             layer: key_cont.layer,
             received: utils::unix_ts(),
             receiverd_seq: seq,
-            id: Some(id.clone()),
-            certified_by: vec![id],
+            id: Some(id),
+            certified_by,
         }
     }
     pub fn new_with_certified(
@@ -93,13 +92,15 @@ impl<PublicKey: PublicKeyBounds> StoredPubKey<PublicKey> {
         id: SenderIdentity,
         seq: u64,
     ) -> Self {
+        let mut certified_by = BTreeSet::new();
+        certified_by.insert(id);
         Self {
             key: key_cont.key.clone(),
             layer: key_cont.layer,
             received: utils::unix_ts(),
             receiverd_seq: seq,
             id: None,
-            certified_by: vec![id],
+            certified_by,
         }
     }
 }
@@ -115,11 +116,9 @@ pub struct PubKeyStore<PublicKey: PublicKeyBounds> {
     /// Directed graph representing "has certified" binary relation
     pub graph: DiGraph<StoredPubKey<PublicKey>, ()>,
     /// Map: PK -> NodeIndex
-    pub pk_to_node_idx: BTreeMap<StoredPubKey<PublicKey>, NodeIndex>,
+    pub pk_to_node_idx: BTreeMap<PublicKey, NodeIndex>,
     /// Map: SenderIdentity -> { NodeIndex } (Set of nodes in WEAKLY connected component)
-    pub id_to_ccomp: BTreeMap<SenderIdentity, BTreeSet<NodeIndex>>,
-    /// The target identity we're currently subscribed to.
-    pub target_id: Option<SenderIdentity>,
+    pub id_to_scc: BTreeMap<SenderIdentity, BTreeSet<NodeIndex>>,
     // ---
     /// Next ID to assign when generating a new sender ID
     pub next_id: SenderId,
@@ -131,85 +130,88 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         PubKeyStore {
             graph: DiGraph::new(),
             pk_to_node_idx: BTreeMap::new(),
-            id_to_ccomp: BTreeMap::new(),
+            id_to_scc: BTreeMap::new(),
             next_id: 0,
-            target_id: None,
             cert_window: 2 * utils::calc_cert_window(cert_interval) - 1,
         }
     }
 
-    pub fn get_key(
-        &self,
-        key: &StoredPubKey<PublicKey>,
-    ) -> Option<(usize, &StoredPubKey<PublicKey>)> {
-        let idx = self.pk_to_node_idx.get(key);
+    pub fn store_pks_for_identity(
+        &mut self,
+        cert_by_key_idx: NodeIndex,
+        pub_keys: Vec<PubKeyTransportCont<PublicKey>>,
+        sender_id: &SenderIdentity,
+        seq: SeqNum,
+    ) {
+        for kw in pub_keys.iter() {
+            // Get a key to store
+            let key_to_store = StoredPubKey::new_with_certified(kw, sender_id.clone(), seq);
 
-        if let Some(x) = idx {
-            let node = self.graph.node_weight(*x);
-            node.map(|y| (x.index(), y))
-        } else {
-            None
+            // Insert the key to the graph
+            self.insert_key(cert_by_key_idx, key_to_store);
         }
     }
 
-    pub fn get_id_cc(&self, petname: &str) -> Option<(&SenderIdentity, &BTreeSet<NodeIndex>)> {
-        for (k, v) in self.id_to_ccomp.iter() {
-            if let Some(x) = &k.petname {
-                if x == petname {
-                    return Some((k, v));
+    pub fn get_key(&self, key: &PublicKey, target_id: &SenderIdentity) -> Option<NodeIndex> {
+        let idx = self.pk_to_node_idx.get(key);
+        if let Some(x) = idx {
+            let node = self.graph.node_weight(*x);
+
+            if let Some(key) = node {
+                if key.certified_by.contains(target_id) {
+                    return Some(*x);
                 }
             }
         }
         None
     }
 
-    ///
-    /// Sets the target identity that we're subscribed to.
-    ///
-    pub fn set_target_id(&mut self, id: SenderIdentity) -> Option<SenderIdentity> {
-        if !self.id_to_ccomp.contains_key(&id) {
-            self.id_to_ccomp.insert(id.clone(), BTreeSet::new());
+    pub fn get_id_cc(&self, petname: &str) -> Option<(&SenderIdentity, &BTreeSet<NodeIndex>)> {
+        for (k, v) in self.id_to_scc.iter() {
+            if k.petnames.contains(&petname.to_string()) {
+                return Some((k, v));
+            }
         }
-
-        let old_id = self.target_id.clone();
-        self.target_id = Some(id);
-        old_id
-    }
-
-    ///
-    /// Gets the target identity that we're subscribed to.
-    ///
-    pub fn get_target_id(&self) -> Option<SenderIdentity> {
-        self.target_id.clone()
+        None
     }
 
     pub fn add_node(&mut self, pk: StoredPubKey<PublicKey>) -> NodeIndex {
-        let from = self.graph.add_node(pk.clone());
+        let new_node_idx = self.graph.add_node(pk.clone());
 
         // Map pubkey to node in the graph
-        self.pk_to_node_idx.insert(pk, from);
+        self.pk_to_node_idx.insert(pk.key, new_node_idx);
 
-        // Map SenderIdentity to CC
-        let set = self
-            .id_to_ccomp
-            .get_mut(self.target_id.as_ref().expect("Should be there!"))
-            .expect("Should be there!");
-        set.insert(from);
+        // If this node belongs to some identity, create a mapping
+        if let Some(x) = &pk.id {
+            let set = self.id_to_scc.get_mut(x).expect("Should be there!");
+            set.insert(new_node_idx);
+        }
 
-        NodeIndex::new(from.index())
+        new_node_idx
     }
-    pub fn get_node(&mut self, idx: usize) -> Option<&StoredPubKey<PublicKey>> {
-        self.graph.node_weight(NodeIndex::new(idx))
+    pub fn get_node(&self, idx: NodeIndex) -> Option<&StoredPubKey<PublicKey>> {
+        self.graph.node_weight(idx)
     }
 
-    pub fn insert_key(&mut self, verify_key_idx: usize, key: StoredPubKey<PublicKey>) {
-        let from = NodeIndex::new(verify_key_idx);
-
-        let to_node = if self.pk_to_node_idx.contains_key(&key) {
-            *self.pk_to_node_idx.get(&key).expect("Should be present!")
+    pub fn insert_key(&mut self, from: NodeIndex, key: StoredPubKey<PublicKey>) {
+        let mut identity = key.certified_by.clone();
+        let to_node = if self.pk_to_node_idx.contains_key(&key.key) {
+            *self
+                .pk_to_node_idx
+                .get(&key.key)
+                .expect("Should be present!")
         } else {
             self.add_node(key)
         };
+
+        // Make sure that the certified is filled in
+        let node_mut = self
+            .graph
+            .node_weight_mut(to_node)
+            .expect("Should be present!");
+        println!("PRE: {:#?}", node_mut.certified_by);
+        node_mut.certified_by.append(&mut identity);
+        println!("PRE: {:#?}", node_mut.certified_by);
 
         // Only add the edge if does not exist already
         //if !has_path_connecting(&self.graph, from, to_node.into(), None) {
@@ -218,32 +220,41 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         }
     }
 
-    pub fn insert_identity_keys(&mut self, keys: Vec<StoredPubKey<PublicKey>>) {
-        // Make sure that these keys do not already exists
-        // If they do, then something horrible happened or the user trusted someone wicked!
-        for k in keys.iter() {
-            for x in self.graph.node_weights() {
-                assert!(*x != *k);
+    ///
+    /// Inserts the provided `key` into the graph as one with the provided `identity`.
+    /// This method is called whenever the receiver receives the first ever message from some
+    /// target and marks it as trusted.
+    ///
+    pub fn insert_identity_key(
+        &mut self,
+        key: StoredPubKey<PublicKey>,
+        identity: &SenderIdentity,
+    ) -> NodeIndex {
+        //info!(tag: "receiver", "Inserting identity key: {:?}", key);
+        // Try to detect already existing identity
+        for existing_key in self.graph.node_weights_mut() {
+            if *existing_key == key {
+                if let Some(ref mut existing_id) = &mut existing_key.id {
+                    existing_id.merge(identity.clone());
+                } else {
+                    existing_key.id = Some(identity.clone())
+                }
+                break;
             }
         }
 
-        assert!(!keys.is_empty(), "There must be at least one key!");
-        let mut keys_it = keys.into_iter();
-
-        // Insert the first key
-        let fst_key = keys_it.next().expect("There must be at least one key!");
-        let fst_key_node = self.add_node(fst_key);
-        let mut from = fst_key_node;
-
-        // We create one huge cycle
-        for k in keys_it {
-            let to = self.add_node(k.clone());
-            self.graph.add_edge(from, to, ());
-            from = to;
+        for (idx, existing_key) in self.graph.node_references() {
+            if *existing_key == key && existing_key.id.is_some() {
+                return idx;
+            }
         }
 
-        // Add the edge from the last to the first
-        self.graph.add_edge(from, fst_key_node, ());
+        if !self.id_to_scc.contains_key(identity) {
+            self.id_to_scc.insert(identity.clone(), BTreeSet::new());
+        }
+
+        // Else add it into the graph
+        self.add_node(key)
     }
 
     // pub fn target_keys_iter(&self) -> impl Iterator<Item = (usize, &StoredPubKey<PublicKey>)> {
@@ -269,33 +280,53 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         let mut sccs = tarjan_scc(&self.graph);
         for comp in sccs.iter_mut() {
             // Detect what ID belongs to this component
-            let mut comp_id = None;
+            let mut comp_ids = BTreeSet::new();
             for n_idx in comp.iter_mut() {
                 let key = self.graph.node_weight(*n_idx).expect("Should be set!");
                 if let Some(x) = &key.id {
-                    if let Some(y) = comp_id {
-                        assert_eq!(y, x.clone(), "There must not be two distict identities in the same strongly connected component!");
-                    }
-
-                    comp_id = Some(x.clone());
+                    comp_ids.insert(x.clone());
                 }
             }
+
+            // Merge the identity
+            let new_comp_id = if comp_ids.len() == 1 {
+                Some(comp_ids.first().expect("Should be there!").clone())
+            } else if comp_ids.len() == 2 {
+                let mut it = comp_ids.clone().into_iter();
+                let mut new_comp_id = it.next().expect("Should be there!");
+                new_comp_id.merge(it.next().expect("Should be there!"));
+
+                // Unify the previous identities to this new one
+                for key_cont in self.graph.node_weights_mut() {
+                    for prev_id in comp_ids.iter() {
+                        // Add the new one
+                        if key_cont.certified_by.contains(prev_id) {
+                            key_cont.certified_by.insert(new_comp_id.clone());
+                        }
+                        // Remove the old ones
+                        key_cont.certified_by.remove(prev_id);
+                    }
+                }
+
+                Some(new_comp_id)
+            } else {
+                assert_eq!(comp_ids.len(), 0, "Cannot merge more then two identities!");
+                None
+            };
 
             // Set the component for all the nodes
             for n_idx in comp.iter_mut() {
                 let key = self.graph.node_weight_mut(*n_idx).expect("Should be set!");
-                key.id = comp_id.clone();
+                key.id = new_comp_id.clone();
             }
         }
     }
 
-    pub fn prune_graph(&mut self) {
+    pub fn prune_graph(&mut self, target_id: &SenderIdentity) {
         let cmp_key = |x: &(SeqNum, NodeIndex)| x.0;
 
         let mut hist_layers = vec![];
         let mut indices_to_delete = vec![];
-
-        let target_id = self.get_target_id().expect("Should be set!");
 
         // Assign the nodes into layers for the target identity
         for (idx, key) in self.graph.node_references() {
@@ -321,8 +352,16 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
             let to_drain = std::cmp::max(0, layer.len() as i64 - self.cert_window as i64) as usize;
             let to_delete = layer.drain(..to_drain);
 
-            for x in to_delete {
-                indices_to_delete.push(x.1);
+            for (_, idx) in to_delete {
+                let node = self.graph.node_weight_mut(idx).expect("Should be there!");
+
+                // Remove this identity from the certified list
+                node.certified_by.retain(|x| x != target_id);
+
+                // Only delete it if empty
+                if node.certified_by.is_empty() {
+                    indices_to_delete.push(idx);
+                }
             }
         }
 
@@ -333,15 +372,17 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         // Rebuild pk_to_node_idx
         // Rebuild id_to_ccomp
         self.pk_to_node_idx.clear();
-        for x in self.id_to_ccomp.iter_mut() {
-            x.1.clear();
-        }
+        self.id_to_scc.clear();
 
         for (idx, key) in self.graph.node_references() {
-            self.pk_to_node_idx.insert(key.clone(), idx);
+            self.pk_to_node_idx.insert(key.key.clone(), idx);
 
             if let Some(x) = &key.id {
-                let set = self.id_to_ccomp.get_mut(x).expect("Should be present!");
+                if !self.id_to_scc.contains_key(&x) {
+                    self.id_to_scc.insert(x.clone(), BTreeSet::new());
+                }
+
+                let set = self.id_to_scc.get_mut(x).expect("Should be present!");
                 set.insert(idx);
             }
         }

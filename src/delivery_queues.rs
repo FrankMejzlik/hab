@@ -48,7 +48,7 @@ impl DeliveryQueues {
                 // Deliver it right away
                 self.next_delivery_seq += 1;
                 self.next_delivery_deadline = SystemTime::now() + self.params.deadline;
-                debug!(tag: "receiver", "Delivering message {} in sequence.", x.metadata.seq);
+                debug!(tag: "delivery", "Delivering message {} in sequence.", x.metadata.seq);
                 return self.heap.pop();
             }
             // If the next message is not the direct successor but the deadline has elapsed already
@@ -58,7 +58,7 @@ impl DeliveryQueues {
                 // Set the seq
                 self.next_delivery_seq = x.metadata.seq + 1;
 
-                debug!(tag: "receiver", "Delivering message {} due to deadline.", x.metadata.seq);
+                debug!(tag: "delivery", "Delivering message {} due to deadline.", x.metadata.seq);
                 return self.heap.pop();
             }
         }

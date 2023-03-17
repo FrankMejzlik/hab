@@ -138,7 +138,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
 
                 #[cfg(feature = "log_input_output")]
                 {
-                    debug!(tag: "receiver","[{}][{}] {}", verif_result.metadata.seq, verif_result.hash, String::from_utf8_lossy(&verif_result.msg));
+                    debug!(tag: "delivery_queues","[{}][{}] {}", verif_result.metadata.seq, verif_result.hash, String::from_utf8_lossy(&verif_result.msg));
                     crate::log_output!(
                         verif_result.metadata.seq,
                         verif_result.hash,
@@ -148,6 +148,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
                 return Ok(ReceivedBlock::new(
                     verif_result.msg,
                     verif_result.verification,
+                    verif_result.metadata,
                 ));
             }
             std::thread::sleep(Duration::from_millis(10));

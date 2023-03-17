@@ -161,16 +161,6 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
             resulting_key = signing_key.clone();
         }
 
-        // If this key just died
-        let died = if (resulting_key.lifetime) == 0 {
-            // Remove it
-            self.data[layer].remove(0);
-            // And indicate that we need a new one
-            true
-        } else {
-            false
-        };
-
         //
         // Determine what keys to certify with this key
         //
@@ -193,6 +183,16 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
                 k.cert_count += 1;
             }
         }
+
+        // If this key just died
+        let died = if (resulting_key.lifetime) == 0 {
+            // Remove it
+            self.data[layer].remove(0);
+            // And indicate that we need a new one
+            true
+        } else {
+            false
+        };
 
         self.first_sign = false;
         (resulting_key, died, pks)
@@ -266,7 +266,7 @@ impl<
         (MsgMetadata { seq }, msg)
     }
 
-    fn new_id(&mut self, petname: Option<String>) -> SenderIdentity {
+    fn new_id(&mut self, petname: String) -> SenderIdentity {
         let id = SenderIdentity::new(self.pks.next_id, petname);
         self.pks.next_id += 1;
         id
@@ -655,106 +655,94 @@ impl<
         let mut to_verify = signed_block.data.clone();
         to_verify.append(&mut serialize(&signed_block.pub_keys).expect(constants::EX_SER));
 
-        // Is this the first message from the target sender (we'll put the pubkeys directly to it's identity)?
-        let all_to_identity = if let Some(old_id) = self.pks.get_id_cc(&self.params.target_petname)
-        {
-            trace!(tag: "receiver", "(!) Using the existing ID: {:?} (!)", old_id.0.petname);
-            self.pks.set_target_id(old_id.0.clone());
-            false
-        } else {
-            // Generate the petnamed identity for the target sender
-            let new_id = self.new_id(Some(self.params.target_petname.clone()));
-            info!(tag: "receiver", "(!) Generating a new trusted identity with keys from the first message: {new_id:#?} (!)");
-            self.pks.set_target_id(new_id);
-            true
-        };
-
-        let sender_id = self
-            .pks
-            .get_target_id()
-            .expect("The target sender should be already set!");
-
-        let mut verification = if all_to_identity {
-            MsgVerification::Verified(sender_id.clone())
-        } else {
-            MsgVerification::Unverified //< By default it's unverified
-        };
-
-        let verify_hint =
-            StoredPubKey::new_empty(signed_block.pub_keys.first().expect("Should be there!"));
-        let verify_ours = self.pks.get_key(&verify_hint);
-
-        // Verify with this pubkey
-        let mut certificating_key_idx = None;
-        if let Some((verify_idx, key_cont)) = verify_ours {
-            if Self::Signer::verify(&to_verify, &signed_block.signature, &key_cont.key) {
-                assert!(
-                    key_cont.certified_by.contains(&sender_id),
-                    "The target sender should have already certified this key."
-                );
-                trace!(tag: "receiver", "Verified with key: {key_cont:?}");
-
-                verification = MsgVerification::Certified(sender_id.clone());
-                certificating_key_idx = Some(verify_idx);
-
-                // How strong is this verification?
-                if let Some(x) = key_cont.id.clone() {
-                    if x == sender_id {
-                        verification = MsgVerification::Verified(sender_id.clone());
-                    }
-                }
-            }
-        }
-        assert!(!(certificating_key_idx.is_some() && all_to_identity), "Cannot be first message from the target identity and verified message at the same time!");
-
         // Read the metadata from the message
         let (metadata, msg) = Self::read_metadata(signed_block.data);
 
-        // If the message was verified with at least certified key
-        if let Some(key_idx) = certificating_key_idx {
-            // Store all the certified public keys under the target identity
-            for kw in signed_block.pub_keys.iter() {
-                // Get a key to store
-                let key_to_store =
-                    StoredPubKey::new_with_certified(kw, sender_id.clone(), metadata.seq);
+        let mut verification = MsgVerification::Unverified; //< By default it's unverified
 
-                // Insert the key to the graph
-                self.pks.insert_key(key_idx, key_to_store);
-            }
-        }
-        // If the first message we put all the keys into the identity
-        else if all_to_identity {
-            let mut id_keys = vec![];
-            for kw in signed_block.pub_keys {
-                id_keys.push(StoredPubKey::new_with_identity(
-                    &kw,
-                    sender_id.clone(),
+        // Get the pubkey FROM THE MESSAGE thath this packet SHOULD be signed with
+        let verify_hint_key = signed_block.pub_keys.first().expect("Should be there!");
+
+        // Is this the first message from the target sender (we'll put the pubkeys directly to it's identity)?
+        let (sender_id, verify_ours) = if let Some((existing_id, _)) =
+            self.pks.get_id_cc(&self.params.target_petname)
+        {
+            trace!(tag: "receiver", "(!) Using the existing ID: {:?} (!)", existing_id.petnames);
+            (
+                existing_id.clone(),
+                self.pks.get_key(&verify_hint_key.key, existing_id),
+            )
+        } else {
+            // Generate the petnamed identity for the target sender
+            let new_id = self.new_id(self.params.target_petname.clone());
+            info!(tag: "receiver", "(!) Generating a new trusted identity with keys from the first message: {new_id:#?} (!)");
+
+            let new_key =
+                StoredPubKey::new_with_identity(verify_hint_key, new_id.clone(), metadata.seq);
+
+            let x = self.pks.insert_identity_key(new_key, &new_id);
+
+            log_graph!(self.dump_pks());
+
+            // let mut handle = stdin().lock();
+            // let mut input = String::new();
+            // handle.read_line(&mut input).expect("Failed to read line");
+
+            // Insert the initial identity node that is the sig
+            (new_id.clone(), Some(x))
+        };
+
+        // debug!(tag: "receiver", "pks: {:#?}", self.pks);
+        debug!(tag: "receiver", "sender_id: {:#?}, verify_ours: {:?}", sender_id, verify_ours);
+
+        // Verify with this pubkey
+        if let Some(verify_idx) = verify_ours {
+            let key_cont = self
+                .pks
+                .get_node(verify_idx)
+                .expect("Should be set!")
+                .clone();
+
+            println!("prever");
+            if Self::Signer::verify(&to_verify, &signed_block.signature, &key_cont.key) {
+                trace!(tag: "receiver", "Verified with key: {key_cont:?}");
+                println!("OK");
+
+                verification = MsgVerification::Certified(sender_id.clone());
+
+                // Store all the certified PKs into the graph
+                self.pks.store_pks_for_identity(
+                    verify_idx,
+                    signed_block.pub_keys,
+                    &sender_id,
                     metadata.seq,
-                ));
-            }
-            self.pks.insert_identity_keys(id_keys);
-        }
+                );
 
-        // Handle SCCs & identities
-        self.pks.proces_nodes();
+                // Handle SCCs & identities
+                self.pks.proces_nodes();
 
-        // Remove obsoltete keys
-        self.pks.prune_graph();
-
-        // Check if the key has not become the part of the identity
-        if let Some(x) = certificating_key_idx {
-            let decrypt_node = self.pks.get_node(x).expect("Should be set!");
-            if let Some(y) = decrypt_node.id.clone() {
-                if y == sender_id {
-                    verification = MsgVerification::Verified(sender_id);
+                // Check if the key has become the part of the identity
+                let key_cont = self
+                    .pks
+                    .get_node(verify_idx)
+                    .expect("Should be set!")
+                    .clone();
+                if let Some(key_id) = &key_cont.id {
+                    if key_id == &sender_id {
+                        verification = MsgVerification::Verified(sender_id.clone());
+                    }
                 }
+
+                // Remove obsoltete keys
+                self.pks.prune_graph(&sender_id);
             }
         }
 
+        // Store the state to the disk
         self.store_state();
-        let dump = self.dump_pks();
-        debug!(tag: "block_verifier", "{}", dump);
-        log_graph!(dump);
+        log_graph!(self.dump_pks());
+
+        debug!(tag: "receiver", "Processed the message {}.", metadata.seq);
 
         Ok(VerifyResult {
             msg,
