@@ -51,6 +51,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
             pub_key_layer_limit: params.pub_key_layer_limit,
             key_lifetime: params.key_lifetime,
             cert_interval: params.cert_interval,
+            max_piece_size: 0,
         };
         let verifier = Arc::new(Mutex::new(BlockVerifier::new(block_signer_params)));
 

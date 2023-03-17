@@ -693,7 +693,7 @@ impl<
         };
 
         // debug!(tag: "receiver", "pks: {:#?}", self.pks);
-        debug!(tag: "receiver", "sender_id: {:#?}, verify_ours: {:?}", sender_id, verify_ours);
+        //debug!(tag: "receiver", "sender_id: {:#?}, verify_ours: {:?}", sender_id, verify_ours);
 
         // Verify with this pubkey
         if let Some(verify_idx) = verify_ours {

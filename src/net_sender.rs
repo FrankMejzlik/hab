@@ -35,6 +35,7 @@ pub struct NetSenderParams {
     pub datagram_size: usize,
     pub subscriber_lifetime: Duration,
     pub net_buffer_size: usize,
+    pub max_piece_size: usize,
 }
 
 ///

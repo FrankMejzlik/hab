@@ -26,6 +26,7 @@ pub struct SenderParams {
     pub datagram_size: usize,
     pub key_lifetime: usize,
     pub cert_interval: usize,
+    pub max_piece_size: usize,
 }
 
 pub struct Sender<BlockSigner: BlockSignerTrait> {
@@ -45,6 +46,7 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
             pub_key_layer_limit: usize::default(), //< Not used un `Sender`
             key_lifetime: params.key_lifetime,
             cert_interval: params.cert_interval,
+            max_piece_size: params.max_piece_size,
         };
         let signer = BlockSigner::new(block_signer_params);
 
@@ -54,6 +56,7 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
             subscriber_lifetime: params.subscriber_lifetime,
             net_buffer_size: params.net_buffer_size,
             datagram_size: params.datagram_size,
+            max_piece_size: params.max_piece_size,
         };
         let net_sender = NetSender::new(net_sender_params);
 
@@ -74,38 +77,44 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
 }
 
 impl<BlockSigner: BlockSignerTrait> SenderTrait for Sender<BlockSigner> {
-    fn broadcast(&mut self, mut msg: Vec<u8>) -> Result<(), Error> {
-        // Increment the sequence number
-        let msg_seq = self.signer.next_seq();
+    fn broadcast(&mut self, msg: Vec<u8>) -> Result<(), Error> {
+        // Iterate over pieces
+        for msg_piece in msg.chunks(self.params.max_piece_size) {
+            let mut piece = vec![0; msg_piece.len()];
+            piece.copy_from_slice(msg_piece);
 
-        #[cfg(feature = "log_input_output")]
-        let msg_clone = msg.clone();
+            // Increment the sequence number
+            let msg_seq = self.signer.next_seq();
 
-        // Add the metadata to the message
-        Self::write_metadata(&mut msg, MsgMetadata { seq: msg_seq });
+            #[cfg(feature = "log_input_output")]
+            let msg_clone = msg.clone();
 
-        // Sign along with the pubkeys
-        let signed_msg = match self.signer.sign(msg) {
-            Ok(x) => x,
-            Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
-        };
+            // Add the metadata to the message
+            Self::write_metadata(&mut piece, MsgMetadata { seq: msg_seq });
 
-        #[cfg(feature = "log_input_output")]
-        {
-            use crate::traits::SignedBlockTrait;
-            // Check & log
-            let hash = signed_msg.hash();
-            let input_string = String::from_utf8_lossy(&msg_clone).to_string();
-            debug!(tag: "sender", "[{}][{}] {input_string}", msg_seq, hash);
-            crate::log_input!(msg_seq, hash, &msg_clone);
+            // Sign along with the pubkeys
+            let signed_msg = match self.signer.sign(piece) {
+                Ok(x) => x,
+                Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
+            };
+
+            #[cfg(feature = "log_input_output")]
+            {
+                use crate::traits::SignedBlockTrait;
+                // Check & log
+                let hash = signed_msg.hash();
+                let input_string = String::from_utf8_lossy(&msg_clone).to_string();
+                debug!(tag: "sender", "[{}][{}] {input_string}", msg_seq, hash);
+                crate::log_input!(msg_seq, hash, &msg_clone);
+            }
+
+            // Broadcast over the network
+            let signed_msg_bytes =
+                bincode::serialize(&signed_msg).expect("Should be seriallizable.");
+            if let Err(e) = self.net_sender.broadcast(&signed_msg_bytes) {
+                return Err(Error::new(&format!("{:?}", e)));
+            };
         }
-
-        // Broadcast over the network
-        let signed_msg_bytes = bincode::serialize(&signed_msg).expect("Should be seriallizable.");
-        if let Err(e) = self.net_sender.broadcast(&signed_msg_bytes) {
-            return Err(Error::new(&format!("{:?}", e)));
-        };
-
         Ok(())
     }
 }

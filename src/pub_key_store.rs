@@ -209,9 +209,7 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
             .graph
             .node_weight_mut(to_node)
             .expect("Should be present!");
-        println!("PRE: {:#?}", node_mut.certified_by);
         node_mut.certified_by.append(&mut identity);
-        println!("PRE: {:#?}", node_mut.certified_by);
 
         // Only add the edge if does not exist already
         //if !has_path_connecting(&self.graph, from, to_node.into(), None) {

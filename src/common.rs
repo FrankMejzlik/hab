@@ -127,6 +127,8 @@ pub struct BlockSignerParams {
     pub key_lifetime: usize,
     /// A number of keys to certify forward (and backward).
     pub cert_interval: usize,
+    /// A maximum byte size of payload in one piece.
+    pub max_piece_size: usize,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord, Clone)]
