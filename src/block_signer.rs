@@ -703,10 +703,8 @@ impl<
                 .expect("Should be set!")
                 .clone();
 
-            println!("prever");
             if Self::Signer::verify(&to_verify, &signed_block.signature, &key_cont.key) {
                 trace!(tag: "receiver", "Verified with key: {key_cont:?}");
-                println!("OK");
 
                 verification = MsgVerification::Certified(sender_id.clone());
 

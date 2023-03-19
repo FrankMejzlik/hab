@@ -216,6 +216,7 @@ impl NetSender {
 
                     trace!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
                     for dgram in datagrams.iter() {
+                        info!(tag: "sender", "dgram size: '{}'.", dgram.len());
                         if let Err(e) = self
                             .rt
                             .block_on(self.sender_socket.send_to(dgram, *dest_sock_addr))

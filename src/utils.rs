@@ -7,7 +7,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bitreader::BitReader;
 use chrono::{DateTime, Utc};
 use hex::{decode, encode};
-use log::debug;
+// ---
+#[allow(unused_imports)]
+use crate::{debug, error, info, log_input, trace, warn};
 
 pub type UnixTimestamp = u128;
 
