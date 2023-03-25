@@ -105,12 +105,16 @@ impl<Signature: Serialize, PublicKey: Serialize> SignedBlockTrait
 pub struct KeyLayers<const T: usize, const N: usize> {
     /// The key containers in their layers (indices).
     data: Vec<Vec<KeyPairStoreCont<T, N>>>,
+    /// List of seq number when the key layer can be used once again (default 0)
+    ready_at: Vec<f64>,
+    /// The average rate at which this layer signs.
+    avg_sign_rate: Vec<f64>,
     /// True if the first sign is to come.
     first_sign: bool,
     /// The number of signs before the layer 0 can be used again
     until_top: usize,
     /// A sequence number of the next block to sign.
-    next_seq: u64,
+    next_seq: SeqNum,
     /// A number of signatures that one keypair can generate.
     key_lifetime: usize,
     /// A number of certificates to keep per layer.
@@ -118,15 +122,28 @@ pub struct KeyLayers<const T: usize, const N: usize> {
 }
 
 impl<const T: usize, const N: usize> KeyLayers<T, N> {
-    pub fn new(depth: usize, key_lifetime: usize, cert_interval: usize) -> Self {
+    pub fn new(
+        depth: usize,
+        key_lifetime: usize,
+        cert_interval: usize,
+        avg_sign_rate: Vec<f64>,
+    ) -> Self {
         KeyLayers {
             data: vec![vec![]; depth],
+            ready_at: vec![0.0; depth],
+            avg_sign_rate,
             first_sign: true,
             until_top: 0,
             next_seq: 0,
             key_lifetime,
             cert_window: utils::calc_cert_window(cert_interval),
         }
+    }
+
+    /// Returns true if the key on the given layer can be scheduled already.
+    fn is_ready(&self, level: usize) -> bool {
+        info!(tag: "sender", "{:#?} < {:#?}", self.ready_at[level], self.next_seq);
+        self.ready_at[level] < self.next_seq as f64
     }
 
     fn insert(&mut self, level: usize, keypair: HorstKeypair<T, N>) {
@@ -159,6 +176,11 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
             signing_key.lifetime -= 1;
             signing_key.last_cerified = utils::unix_ts();
             resulting_key = signing_key.clone();
+        }
+
+        let rate = self.avg_sign_rate[layer];
+        if rate > 0.0 {
+            self.ready_at[layer] += rate;
         }
 
         //
@@ -204,6 +226,7 @@ impl<const T: usize, const N: usize> Display for KeyLayers<T, N> {
         let mut res = String::new();
 
         for (l_idx, layer) in self.data.iter().enumerate() {
+            res.push_str(&format!("|{:.1}|", self.ready_at[l_idx]));
             for (i, kc) in layer.iter().enumerate() {
                 res.push_str(&format!("[{}] {} ", l_idx, kc));
                 if i % self.cert_window == (self.cert_window - 1) {
@@ -433,12 +456,19 @@ impl<
         // TODO: Use key pauses
 
         // Sample what layer to use
-        let sign_layer = if self.layers.first_sign {
-            debug!(tag:"sender", "The first ever sign is using layer 0");
-            0
-        } else {
-            self.distr.sample(&mut self.rng)
-        };
+        let mut sign_layer;
+        loop {
+            sign_layer = if self.layers.first_sign {
+                debug!(tag:"sender", "The first ever sign is using layer 0");
+                0
+            } else {
+                self.distr.sample(&mut self.rng)
+            };
+
+            if self.layers.is_ready(sign_layer) {
+                break;
+            }
+        }
         debug!(tag:"sender", "Signing with key from the layer {sign_layer}...");
 
         // Poll the key
@@ -515,11 +545,13 @@ impl<
             params.seed, params.layers
         );
 
-        // Instantiate the probability distribution
-        let weights = (0..params.layers)
-            .map(|x| 2_f64.powf(x as f64))
-            .collect::<Vec<f64>>();
-        let distr = DiscreteDistribution::new(weights);
+        assert_eq!(
+            params.layers,
+            params.key_dist.len(),
+            "The number of layer does not match."
+        );
+
+        let (distr, avg_sign_rate) = utils::lifetimes_to_distr(&params.key_dist);
 
         // Initially populate the layers with keys
         let mut rng = CsPrng::seed_from_u64(params.seed);
@@ -527,7 +559,12 @@ impl<
         // We generate `cert_interval` keys backward and `cert_interval` keys forward
         let cw_size = utils::calc_cert_window(params.cert_interval);
 
-        let mut layers = KeyLayers::new(params.layers, params.key_lifetime, params.cert_interval);
+        let mut layers = KeyLayers::new(
+            params.layers,
+            params.key_lifetime,
+            params.cert_interval,
+            avg_sign_rate,
+        );
         for l_idx in 0..params.layers {
             // Generate the desired number of keys per layer to forward & backward certify them
             for _ in 0..cw_size {
@@ -631,8 +668,8 @@ impl<
         let cert_int = params.cert_interval;
         let new_inst = BlockSigner {
             params,
-            rng: CsPrng::seed_from_u64(0),          //< Not used
-            layers: KeyLayers::new(0, 0, cert_int), //< Not used
+            rng: CsPrng::seed_from_u64(0),                  //< Not used
+            layers: KeyLayers::new(0, 0, cert_int, vec![]), //< Not used
             pks: PubKeyStore::new(cert_int),
             distr: DiscreteDistribution::new(vec![]), //< Not used
             _x: PhantomData,

@@ -27,6 +27,7 @@ pub struct SenderParams {
     pub key_lifetime: usize,
     pub cert_interval: usize,
     pub max_piece_size: usize,
+    pub key_dist: Vec<Vec<usize>>,
 }
 
 pub struct Sender<BlockSigner: BlockSignerTrait> {
@@ -47,6 +48,7 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
             key_lifetime: params.key_lifetime,
             cert_interval: params.cert_interval,
             max_piece_size: params.max_piece_size,
+            key_dist: params.key_dist.clone(),
         };
         let signer = BlockSigner::new(block_signer_params);
 
