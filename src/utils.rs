@@ -142,7 +142,7 @@ pub fn lifetimes_to_distr(key_dist: &Vec<Vec<usize>>) -> (DiscreteDistribution, 
 
     let mut weights = weights
         .into_iter()
-        .map(|x| x as f64 / max as f64)
+        .map(|x| (max as f64 / x as f64) / max as f64)
         .collect::<Vec<f64>>();
 
     let mut sum = 0.0;
