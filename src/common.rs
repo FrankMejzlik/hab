@@ -312,6 +312,9 @@ macro_rules! debug {
                 )
                 .unwrap();
 
+
+
+
             //log::debug!($($arg)+);
         }
     }};
@@ -326,7 +329,6 @@ macro_rules! info {
 	(tag: $tag:expr, $($arg:tt)+) => {{
         use $crate::common::LOGS_DIR;
         use std::io::Write;
-
         if log::max_level() >= log::Level::Info && log::STATIC_MAX_LEVEL >= log::Level::Info {
             let mut log_file = std::fs::OpenOptions::new()
                 .create(true)
@@ -346,7 +348,6 @@ macro_rules! info {
                     .as_bytes(),
                 )
                 .unwrap();
-
             //log::info!($($arg)+);
         }
     }};

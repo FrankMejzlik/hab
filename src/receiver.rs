@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
+// ---
+use xxhash_rust::xxh3::xxh3_64;
 // ---
 use crate::common::{BlockSignerParams, Error, ReceivedBlock, SenderIdentity, SeqNum};
 use crate::delivery_queues::{DeliveryQueues, DeliveryQueuesParams};
@@ -132,21 +133,8 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
             }
 
             if let Some(verif_result) = received {
-                // // In-orderity check
-                // assert!(
-                //     _metadata.seq < *self.prev_seqs.get(&verif_state).expect("Should be there!"),
-                //     "The messages are not delivered in-order!"
-                // );
+                debug!(tag: "delivery_queues","[{}][{}][{}] {}", verif_result.metadata.seq, verif_result.hash, verif_result.msg.len(), xxh3_64(&verif_result.msg));
 
-                #[cfg(feature = "log_input_output")]
-                {
-                    debug!(tag: "delivery_queues","[{}][{}] {}", verif_result.metadata.seq, verif_result.hash, String::from_utf8_lossy(&verif_result.msg));
-                    crate::log_output!(
-                        verif_result.metadata.seq,
-                        verif_result.hash,
-                        &verif_result.msg
-                    );
-                }
                 return Ok(ReceivedBlock::new(
                     verif_result.msg,
                     verif_result.verification,

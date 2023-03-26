@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io::{Cursor, Read};
 use std::net::SocketAddrV4;
+use std::sync::mpsc;
 use std::time::SystemTime;
 use std::{
     str::FromStr,
@@ -16,7 +17,8 @@ use std::{
 };
 // ---
 use byteorder::{LittleEndian, ReadBytesExt};
-use tokio::net::UdpSocket;
+//use tokio::net::UdpSocket;
+use std::net::UdpSocket;
 use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 // ---
@@ -177,8 +179,8 @@ pub struct NetReceiverParams {
 pub struct NetReceiver {
     params: NetReceiverParams,
     rt: Runtime,
-    socket: UdpSocket,
     blocks: FragmentedBlocks,
+    rx: std::sync::mpsc::Receiver<Vec<u8>>,
 }
 
 impl NetReceiver {
@@ -187,7 +189,7 @@ impl NetReceiver {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
         // Bind on some available port
-        let socket = match rt.block_on(UdpSocket::bind("0.0.0.0:0")) {
+        let socket = match UdpSocket::bind("0.0.0.0:0") {
             Ok(x) => x,
             Err(e) => panic!("Failed to bind to the receiver socket! ERROR: {}", e),
         };
@@ -195,6 +197,7 @@ impl NetReceiver {
             .local_addr()
             .expect("Should have local address!")
             .port();
+
         info!(tag: "receiver", "The receiver thread is bound at '{}'...", socket.local_addr().unwrap());
 
         // Spawn the task that will send periodic hearbeats to the sender
@@ -205,35 +208,49 @@ impl NetReceiver {
         ));
         let datagram_size = params.datagram_size;
 
+        // Create a channel
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+
+        let buff_size = params.net_buffer_size;
+        std::thread::spawn(move || {
+            let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
+            let mut buf = vec![0; buff_size];
+            loop {
+                let recv = match socket.recv_from(&mut buf) {
+                    Ok(x) => x.0,
+                    Err(e) => {
+                        warn!(tag: "receiver", "Failed to receive the datagram! ERROR: {}!",e);
+                        0
+                    }
+                };
+
+                // Copy the actual bytes to the resulting vector
+                let mut dgram = vec![0; recv];
+                dgram.copy_from_slice(&buf[..recv]);
+
+                if let Err(e) = tx.send(dgram) {
+                    warn!(tag: "receiver", "Failed to send to the queue! ERROR: {e}");
+                }
+            }
+        });
+
         NetReceiver {
             params,
             rt,
-            socket,
             blocks: FragmentedBlocks::new(datagram_size),
+            rx,
         }
     }
 
     pub fn receive(&mut self) -> Result<Vec<u8>, Error> {
         loop {
-            let mut buf = vec![0; self.params.net_buffer_size];
-            let (recv, _peer) = match self.rt.block_on(self.socket.recv_from(&mut buf)) {
-                Ok(x) => x,
-                Err(e) => {
-                    return Err(Error::new(&format!(
-                        "Failed to receive the datagram! ERROR: {}!",
-                        e
-                    )))
+            if let Ok(dgram) = self.rx.recv() {
+                // Insert the datagram and pass it on if the block is now complete
+                if let Some(x) = self.blocks.insert(&dgram) {
+                    return Ok(x);
                 }
-            };
-            //debug!(tag: "receiver", "\t\tReceived {recv} bytes from {peer}.");
-
-            // Copy the actual bytes to the resulting vector
-            let mut dgram = vec![0; recv];
-            dgram.copy_from_slice(&buf[..recv]);
-
-            // Insert the datagram and pass it on if the block is now complete
-            if let Some(x) = self.blocks.insert(&dgram) {
-                return Ok(x);
+            } else {
+                return Err(Error::new("Failed to receive from the queue!"));
             }
         }
     }
@@ -243,12 +260,12 @@ impl NetReceiver {
             Ok(x) => x,
             Err(e) => panic!("Failed to parse the address '{addr}! ERROR: {e}'"),
         };
-        let socket = match UdpSocket::bind("0.0.0.0:0").await {
+        let socket = match UdpSocket::bind("0.0.0.0:0") {
             Ok(x) => x,
             Err(e) => panic!("Failed to bind to the heartbeat socket! ERROR: {}", e),
         };
 
-        if socket.connect(addr).await.is_err() {
+        if socket.connect(addr).is_err() {
             panic!("Failed to connect to '{addr}'!");
         }
         info!(tag: "heartbeat_task", "Subscribing to the sender at '{addr}'....");
@@ -256,7 +273,7 @@ impl NetReceiver {
         // The task loop
         while running.load(Ordering::Acquire) {
             debug!(tag: "heartbeat_task", "Sending a heartbeat to the sender at '{addr}'...");
-            match socket.send(&recv_port.to_le_bytes()).await {
+            match socket.send(&recv_port.to_le_bytes()) {
                 Ok(_) => (),
                 Err(e) => warn!("Failed to send a heartbeat to '{addr}'! ERROR: {e}"),
             };

@@ -88,8 +88,8 @@ impl<BlockSigner: BlockSignerTrait> SenderTrait for Sender<BlockSigner> {
             // Increment the sequence number
             let msg_seq = self.signer.next_seq();
 
-            #[cfg(feature = "log_input_output")]
-            let msg_clone = msg.clone();
+            let _msg_size = piece.len();
+            let _msg_hash = xxhash_rust::xxh3::xxh3_64(&piece);
 
             // Add the metadata to the message
             Self::write_metadata(&mut piece, MsgMetadata { seq: msg_seq });
@@ -105,9 +105,7 @@ impl<BlockSigner: BlockSignerTrait> SenderTrait for Sender<BlockSigner> {
                 use crate::traits::SignedBlockTrait;
                 // Check & log
                 let hash = signed_msg.hash();
-                let input_string = String::from_utf8_lossy(&msg_clone).to_string();
-                debug!(tag: "sender", "[{}][{}] {input_string}", msg_seq, hash);
-                crate::log_input!(msg_seq, hash, &msg_clone);
+                debug!(tag: "sender", "[{msg_seq}][{hash}][{_msg_size}] {_msg_hash}");
             }
 
             // Broadcast over the network

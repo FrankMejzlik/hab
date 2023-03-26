@@ -7,6 +7,7 @@ authors = ["Frantisek Mejzlik <frankmejzlik@proton.me>"]
 [dependencies]
 clap = { version = "3.2", features = ["derive"] }
 sha3 = "0.10"
+sha2 = "0.10"
 rand_chacha = { version = "0.3.1", features=["serde1"]}
 rand_core = "0.6.4"
 log = { version = "0.4" }
