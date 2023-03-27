@@ -7,6 +7,7 @@ use std::io::Read;
 use std::io::Write;
 use std::net::{SocketAddr, SocketAddrV4};
 use std::str::FromStr;
+use std::sync::mpsc::Sender;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -36,6 +37,8 @@ pub struct NetSenderParams {
     pub subscriber_lifetime: Duration,
     pub net_buffer_size: usize,
     pub max_piece_size: usize,
+    /// An alternative output destination instread of network.
+    pub alt_output: Option<Sender<Vec<u8>>>,
 }
 
 ///
@@ -51,7 +54,6 @@ pub struct NetSender {
     sender_socket: UdpSocket,
     /// A table of the subscribed receivers with the UNIX timestamp of the current lifetime.
     subscribers: Subscribers,
-
     // ---
     #[allow(dead_code)]
     messages: Vec<Vec<u8>>,
@@ -216,13 +218,22 @@ impl NetSender {
 
                     trace!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
                     for dgram in datagrams.iter() {
-                        if let Err(e) = self
-                            .rt
-                            .block_on(self.sender_socket.send_to(dgram, *dest_sock_addr))
-                        {
-                            warn!("Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
-                        };
-                        std::thread::sleep(Duration::from_micros(10));
+                        // If the alternative sender is set
+                        if let Some(alt_tx) = &mut self.params.alt_output {
+                            if let Err(e) = alt_tx.send(dgram.clone()) {
+                                warn!(tag: "sender", "Failed to send datagram to the alternative output! ERROR: {}!",e);
+                            }
+                        }
+                        // Else use the network as an output
+                        else {
+                            if let Err(e) = self
+                                .rt
+                                .block_on(self.sender_socket.send_to(dgram, *dest_sock_addr))
+                            {
+                                warn!(tag: "sender", "Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
+                            };
+                            std::thread::sleep(Duration::from_micros(10));
+                        }
                     }
                 }
             }

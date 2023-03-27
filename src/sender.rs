@@ -16,7 +16,6 @@ use crate::{debug, error, info, trace, warn};
 #[derive(Debug)]
 pub struct SenderParams {
     pub seed: u64,
-    pub layers: usize,
     pub addr: String,
     pub running: Arc<AtomicBool>,
     pub id_dir: String,
@@ -28,6 +27,8 @@ pub struct SenderParams {
     pub cert_interval: usize,
     pub max_piece_size: usize,
     pub key_dist: Vec<Vec<usize>>,
+    /// An alternative output destination instread of network.
+    pub alt_output: Option<std::sync::mpsc::Sender<Vec<u8>>>,
 }
 
 pub struct Sender<BlockSigner: BlockSignerTrait> {
@@ -40,11 +41,9 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
     pub fn new(params: SenderParams) -> Self {
         let block_signer_params = BlockSignerParams {
             seed: params.seed,
-            layers: params.layers,
             id_dir: params.id_dir.clone(),
             id_filename: params.id_filename.clone(),
             target_petname: String::default(), //< Not used in `Sender`
-            pub_key_layer_limit: usize::default(), //< Not used un `Sender`
             key_lifetime: params.key_lifetime,
             cert_interval: params.cert_interval,
             max_piece_size: params.max_piece_size,
@@ -59,6 +58,7 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
             net_buffer_size: params.net_buffer_size,
             datagram_size: params.datagram_size,
             max_piece_size: params.max_piece_size,
+            alt_output: params.alt_output.clone(),
         };
         let net_sender = NetSender::new(net_sender_params);
 

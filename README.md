@@ -41,10 +41,10 @@ Then you can verify the output with `receiver` mode and, if the signature is val
 
 ```sh
 # Sign the message in `./env/data.input` and store the signed block to `./env/data.signed`
-./target/debug/hashsig sender "0.0.0.0:5555" --input ./env/data.input --output ./env/data.signed
+./target/debug/hab sender "0.0.0.0:5555" --input ./env/data.input --output ./env/data.signed
 
 # Verify the signed block  in `./env/data.signed` and if valid write it to `./env/data.output`
-./target/debug/hashsig receiver "127.0.0.1:5555" --input ./env/data.signed --output ./env/data.output
+./target/debug/hab receiver "127.0.0.1:5555" --input ./env/data.signed --output ./env/data.output
 ```
 
 ## **Logging**

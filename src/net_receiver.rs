@@ -167,6 +167,8 @@ pub struct NetReceiverParams {
     pub running: Arc<AtomicBool>,
     pub datagram_size: usize,
     pub net_buffer_size: usize,
+    /// An alternative output destination instread of network.
+    pub alt_input: Option<std::sync::mpsc::Receiver<Vec<u8>>>,
 }
 
 ///
@@ -185,7 +187,7 @@ pub struct NetReceiver {
 
 impl NetReceiver {
     #[allow(dead_code)]
-    pub fn new(params: NetReceiverParams) -> Self {
+    pub fn new(mut params: NetReceiverParams) -> Self {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
         // Bind on some available port
@@ -211,16 +213,33 @@ impl NetReceiver {
         // Create a channel
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
 
+        let mut alt_dgram_receiver = params.alt_input.take();
         let buff_size = params.net_buffer_size;
         std::thread::spawn(move || {
-            let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
             let mut buf = vec![0; buff_size];
             loop {
-                let recv = match socket.recv_from(&mut buf) {
-                    Ok(x) => x.0,
-                    Err(e) => {
-                        warn!(tag: "receiver", "Failed to receive the datagram! ERROR: {}!",e);
-                        0
+                // If the alternative reciever is set
+                let recv = if let Some(alt_rx) = &mut alt_dgram_receiver {
+                    match alt_rx.recv() {
+                        Ok(recv_data) => {
+                            let recv = recv_data.len();
+                            buf.copy_from_slice(&recv_data);
+                            recv
+                        }
+                        Err(e) => {
+                            warn!(tag: "receiver", "Failed to receive the datagram from the alternative source! ERROR: {}!",e);
+                            0
+                        }
+                    }
+                }
+                // Else use network as a source
+                else {
+                    match socket.recv_from(&mut buf) {
+                        Ok(x) => x.0,
+                        Err(e) => {
+                            warn!(tag: "receiver", "Failed to receive the datagram! ERROR: {}!",e);
+                            0
+                        }
                     }
                 };
 

@@ -540,15 +540,10 @@ impl<
                 info!(tag: "sender", "No existing ID found, creating a new one.");
             }
         };
+        let num_layers = params.key_dist.len();
         info!(tag: "sender",
             "Creating new `BlockSigner` with seed {} and {} layers of keys.",
-            params.seed, params.layers
-        );
-
-        assert_eq!(
-            params.layers,
-            params.key_dist.len(),
-            "The number of layer does not match."
+            params.seed, num_layers
         );
 
         let (distr, avg_sign_rate) = utils::lifetimes_to_distr(&params.key_dist);
@@ -560,12 +555,12 @@ impl<
         let cw_size = utils::calc_cert_window(params.cert_interval);
 
         let mut layers = KeyLayers::new(
-            params.layers,
+            num_layers,
             params.key_lifetime,
             params.cert_interval,
             avg_sign_rate,
         );
-        for l_idx in 0..params.layers {
+        for l_idx in 0..num_layers {
             // Generate the desired number of keys per layer to forward & backward certify them
             for _ in 0..cw_size {
                 layers.insert(l_idx, Self::Signer::gen_key_pair(&mut rng));

@@ -26,10 +26,11 @@ pub struct ReceiverParams {
     pub id_filename: String,
     pub datagram_size: usize,
     pub net_buffer_size: usize,
-    pub pub_key_layer_limit: usize,
     pub key_lifetime: usize,
     pub cert_interval: usize,
     pub delivery_deadline: Duration,
+	/// An alternative output destination instread of network.
+    pub alt_input: Option<std::sync::mpsc::Receiver<Vec<u8>>>,
 }
 
 pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'static> {
@@ -42,14 +43,12 @@ pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'sta
 }
 
 impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifier> {
-    pub fn new(params: ReceiverParams) -> Self {
+    pub fn new(mut params: ReceiverParams) -> Self {
         let block_signer_params = BlockSignerParams {
             seed: 0,
-            layers: 0,
             id_dir: params.id_dir.clone(),
             id_filename: params.id_filename.clone(),
             target_petname: params.target_name.clone(),
-            pub_key_layer_limit: params.pub_key_layer_limit,
             key_lifetime: params.key_lifetime,
             cert_interval: params.cert_interval,
             max_piece_size: 0,
@@ -62,6 +61,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
             running: params.running.clone(),
             datagram_size: params.datagram_size,
             net_buffer_size: params.net_buffer_size,
+            alt_input: params.alt_input.take(),
         };
 
         let running_clone = params.running.clone();

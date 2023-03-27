@@ -1,0 +1,81 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "SENDER STDIN",
+			"cargo": {
+				"args": [
+					"build",
+					"--bin=audibro",
+					"--package=audibro"
+				],
+				"filter": {
+					"name": "audibro",
+					"kind": "bin"
+				}
+			},
+			"args": ["sender", "0.0.0.0:5555"],
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "SENDER FILE",
+			"cargo": {
+				"args": [
+					"build",
+					"--bin=audibro",
+					"--package=audibro"
+				],
+				"filter": {
+					"name": "audibro",
+					"kind": "bin"
+				}
+			},
+			"args": ["sender","--input", "data.in"],
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "RECEIVER",
+			"cargo": {
+				"args": [
+					"build",
+					"--bin=audibro",
+					"--package=audibro"
+				],
+				"filter": {
+					"name": "audibro",
+					"kind": "bin"
+				}
+			},
+			"args": ["receiver", "127.0.0.1:5555"],
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Debug unit tests in executable 'audibro'",
+			"cargo": {
+				"args": [
+					"test",
+					"--no-run",
+					"--bin=audibro",
+					"--package=audibro"
+				],
+				"filter": {
+					"name": "audibro",
+					"kind": "bin"
+				}
+			},
+			"args": [],
+			"cwd": "${workspaceFolder}"
+		}
+	]
+}
