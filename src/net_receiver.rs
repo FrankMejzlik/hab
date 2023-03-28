@@ -143,11 +143,9 @@ impl FragmentedBlocks {
         let fragment_id = fragment.id;
 
         // If a new hash has came in, create a new record
-        self.blocks
+        let record = self.blocks
             .entry(fragment_id)
             .or_insert_with(|| FragmentedBlock::new());
-
-        let record = self.blocks.get_mut(&fragment_id).unwrap();
 
         let res = match record.insert(fragment) {
             Some(x) => {

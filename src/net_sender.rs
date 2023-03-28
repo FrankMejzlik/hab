@@ -92,10 +92,10 @@ impl NetSender {
 
     ///
     /// Splits the provided data payload into fragments of specific size do they fit within the
-    /// single datagram of a configured size of `max_dgram_size`. In BE.
+	/// single datagram of a configured size of `max_dgram_size`. In BE.
     ///
     /// +-----------------+-------------+-----------+----------------------------------------+
-    /// |    hash (8B)    | offset (31b)| more (1b) | payload (up to max datagram size - 8B) |
+    /// | fragment_id (8B)| offset (31b)| more (1b) | payload (up to max datagram size - 8B) |
     /// +-----------------+-------------+-----------+----------------------------------------+
     ///
     fn split_to_datagrams(data: &[u8], max_dgram_size: usize) -> Vec<Vec<u8>> {
