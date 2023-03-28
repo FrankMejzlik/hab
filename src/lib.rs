@@ -2,6 +2,7 @@
 //! <PROJECT_NAME> is an implementation of the hash-based authentication protocol for streamed data.
 //!
 mod block_signer;
+mod buffer_tracker;
 mod constants;
 mod delivery_queues;
 mod diag_server;

@@ -3,6 +3,7 @@
 //!
 
 use std::collections::BTreeMap;
+use std::io::Cursor;
 use std::io::Read;
 use std::io::Write;
 use std::net::{SocketAddr, SocketAddrV4};
@@ -89,44 +90,59 @@ impl NetSender {
         }
     }
 
-    //
-    // Splits the provided data payload into datagrams of specific size containing metadata
-    // to reconstruct the payload after receiving.
-    //
-    // +-----------------+-----------+-----------+-----------------------------------+
-    // |    hash (8B)    |  idx (4B) | total (4B)| payload (up to max datagram size) |
-    // +-----------------+-----------+-----------+-----------------------------------+
-    //
-    fn split_to_datagrams(data: &[u8], dgram_size: usize) -> Vec<Vec<u8>> {
-        let mut in_cursor = std::io::Cursor::new(data);
-
-        let mut res = vec![];
-
-        let hash = xxh3_64(data);
-        let hash = hash.to_le_bytes();
-
-        let (_, _, payload_size) = common::get_datagram_sizes(dgram_size);
+    ///
+    /// Splits the provided data payload into fragments of specific size do they fit within the
+    /// single datagram of a configured size of `max_dgram_size`. In BE.
+    ///
+    /// +-----------------+-------------+-----------+----------------------------------------+
+    /// |    hash (8B)    | offset (31b)| more (1b) | payload (up to max datagram size - 8B) |
+    /// +-----------------+-------------+-----------+----------------------------------------+
+    ///
+    fn split_to_datagrams(data: &[u8], max_dgram_size: usize) -> Vec<Vec<u8>> {
+        // Calculate the size of the payload
+        let (_, _, payload_size) = common::get_fragment_dgram_sizes(max_dgram_size);
         let data_size = data.len();
 
-        let num_dgrams: u32 = ((data_size + payload_size - 1) / payload_size)
-            .try_into()
-            .expect("!");
+        // Compute how many dgrams will be needed to send the data
+        let num_dgrams = (data_size + payload_size - 1) / payload_size;
 
-        for dgram_idx in 0..num_dgrams {
-            let mut out_buffer: Vec<u8> = Vec::new();
-            let mut out_cursor = std::io::Cursor::new(&mut out_buffer);
+        // Compute the hash of the data
+        let fragment_id = xxh3_64(data).to_be_bytes();
 
-            _ = out_cursor.write(&hash).expect("!");
-            _ = out_cursor.write(&dgram_idx.to_le_bytes()).expect("!");
-            _ = out_cursor.write(&num_dgrams.to_le_bytes()).expect("!");
+        // The resulting datagrams
+        let mut dgram_payloads = vec![];
 
-            let mut lc = in_cursor.take(payload_size as u64);
-            lc.read_to_end(&mut out_buffer).expect("!");
-            in_cursor = lc.into_inner();
-            res.push(out_buffer);
+        // Instantiate a cursor over the borrowd buffer
+        let mut in_cursor = Cursor::new(data);
+
+        // Iterate of the number of dgrams to create
+        for _ in 0..num_dgrams {
+            let mut payload_bytes = vec![0; payload_size];
+            if let Ok(written) = in_cursor.read(&mut payload_bytes) {
+                let unwritten = payload_size - written;
+                // If is the last one, truncate the buffer
+                if unwritten > 0 {
+                    payload_bytes.truncate(written);
+                }
+            }
+
+            // The bytes holding 31 bits of the offset and 1 bit of more flag
+            let mut offset_more = in_cursor.position().to_be_bytes();
+
+            // If this is the last datagram, set the more flag to 0
+            if in_cursor.position() == data_size as u64 {
+                // Set the last bit to 0
+                offset_more[3] &= 0b0111_1111;
+            }
+
+            let mut out_cursor = Cursor::new(vec![]);
+            _ = out_cursor.write(&fragment_id).unwrap();
+            _ = out_cursor.write(&offset_more).unwrap();
+
+            dgram_payloads.push(payload_bytes);
         }
 
-        res
+        dgram_payloads
     }
     // ---
 
@@ -343,7 +359,7 @@ mod tests {
         // +-----------------+-----------+-----------+-----------------------------------+
         //
 
-        let (dgram_size, header_size, _) = common::get_datagram_sizes(DGRAM_SIZE);
+        let (dgram_size, header_size, _) = common::get_fragment_dgram_sizes(DGRAM_SIZE);
 
         let mut rng = rand::thread_rng();
         let data: Vec<u8> = (0..20000).map(|_| rng.gen()).collect();

@@ -19,19 +19,32 @@ use crate::{debug, error, info, trace, warn};
 //
 pub type UnixTimestamp = u128;
 pub type PortNumber = u16;
-pub type DgramHash = u64;
+pub type FragmentId = u64;
 pub type MsgSignPubkeysChecksum = u64;
-pub type DgramIdx = u32;
+pub type FragmentOffset = u32;
 pub type SeqNum = u64;
 pub type SenderId = u64;
 
 pub const LOGS_DIR: &str = "logs/";
 
-pub fn get_datagram_sizes(dgram_size: usize) -> (usize, usize, usize) {
-    let header_size = size_of::<DgramHash>() + 2 * size_of::<DgramIdx>();
-    let payload_size = dgram_size - header_size;
+///
+/// For the provided maximum datagram size it returns the sizes for UDP
+/// datagram header, our fragment header and payload.
+///
+pub fn get_fragment_dgram_sizes(max_dgram_size: usize) -> (usize, usize, usize) {
+    // 4x2B: https://www.rfc-editor.org/rfc/rfc768
+    let udp_dgram_header_size = 8;
+    let fragment_header_size = size_of::<FragmentId>() + size_of::<FragmentOffset>();
+    let payload_size = max_dgram_size - fragment_header_size - udp_dgram_header_size;
 
-    (dgram_size, header_size, payload_size)
+    (udp_dgram_header_size, fragment_header_size, payload_size)
+}
+#[derive(Debug, Clone)]
+pub struct Fragment {
+    pub id: FragmentId,
+    pub offset: FragmentOffset,
+    pub more: bool,
+    pub payload: Vec<u8>,
 }
 
 ///

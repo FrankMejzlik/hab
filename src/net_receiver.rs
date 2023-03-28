@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{Cursor, Read};
+use std::mem::size_of;
 use std::net::SocketAddrV4;
 use std::sync::mpsc;
 use std::time::SystemTime;
@@ -16,86 +17,91 @@ use std::{
     },
 };
 // ---
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{BigEndian, ReadBytesExt};
 //use tokio::net::UdpSocket;
 use std::net::UdpSocket;
 use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 // ---
-use crate::common::{self, DgramHash, DgramIdx, Error, PortNumber};
+use crate::buffer_tracker::BufferTracker;
+use crate::common::{Error, Fragment, FragmentId, FragmentOffset, PortNumber};
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
-pub fn parse_datagram(data: &[u8]) -> (DgramHash, DgramIdx, DgramIdx, Vec<u8>) {
-    let mut in_cursor = Cursor::new(data);
+///
+/// Parses the provided data buffer (BE) into a structured fragment.
+///
+/// +-----------------+-------------+-----------+----------------------------------------+
+/// | fragment_id (8B)| offset (31b)| more (1b) | payload (up to max datagram size - 8B) |
+/// +-----------------+-------------+-----------+----------------------------------------+
+///
+pub fn parse_fragment(data: &[u8]) -> Fragment {
+    let mut data_cursor = Cursor::new(data);
 
-    let hash = in_cursor
-        .read_u64::<LittleEndian>()
-        .expect("Parse should not fail!");
-    let idx = in_cursor
-        .read_u32::<LittleEndian>()
-        .expect("Parse should not fail!");
-    let count = in_cursor
-        .read_u32::<LittleEndian>()
-        .expect("Parse should not fail!");
+    // Read fragment ID
+    let fragment_id = data_cursor.read_u64::<BigEndian>().unwrap();
+    // Read Offet + more bit
+    let mut offset_more = [0; size_of::<FragmentOffset>()];
+    _ = data_cursor.read_exact(&mut offset_more);
+
+    // Parse the more flag from the last bit
+    let more = offset_more[3] & 0b00000001 == 1;
+    // Pull down the last bit
+    offset_more[3] &= 0b11111110;
+
+    // Parse the offset
+    let offset = FragmentOffset::from_be_bytes(offset_more);
+
     let mut data = vec![];
-    in_cursor
-        .read_to_end(&mut data)
-        .expect("Parse should not fail!");
+    data_cursor.read_to_end(&mut data).unwrap();
 
-    (hash, idx, count, data)
+    Fragment {
+        id: fragment_id,
+        offset,
+        more,
+        payload: data,
+    }
 }
 
 #[derive(Debug)]
 pub struct FragmentedBlock {
-    data: Vec<u8>,
-    frag_size: usize,
-    missing_indices: HashMap<usize, ()>,
+    data: Option<Vec<u8>>,
+    buffer_tracker: BufferTracker,
 }
 impl fmt::Display for FragmentedBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut str = String::new();
-
-        str.push('[');
-
-        for _ in 0..((self.data.len() + self.frag_size - 1) / self.frag_size) {
-            str.push('o');
-        }
-
-        for (m_i, _) in self.missing_indices.iter() {
-            str.replace_range(m_i..&(m_i + 1), "x");
-        }
-
-        str.push(']');
-
-        write!(f, "{}", str)
+        write!(f, "{:?}", self.buffer_tracker)
     }
 }
 
 impl FragmentedBlock {
-    pub fn new(frag_size: usize, num_fragments: usize) -> Self {
-        let mut missing_indices = HashMap::new();
-
-        for i in 0..num_fragments {
-            missing_indices.insert(i, ());
-        }
+    pub fn new() -> Self {
         FragmentedBlock {
-            data: vec![0_u8; frag_size * num_fragments],
-            frag_size,
-            missing_indices,
+            data: Some(vec![]),
+            buffer_tracker: BufferTracker::new(),
         }
     }
-    pub fn insert(&mut self, idx: usize, fragment: &[u8]) -> Option<Vec<u8>> {
-        let idx_from = idx * self.frag_size;
-        let idx_to = idx_from + fragment.len();
-        let _ = &self.data[idx_from..idx_to].copy_from_slice(fragment);
 
-        // Mark as ready
-        self.missing_indices.remove(&idx);
+    pub fn insert(&mut self, fragment: Fragment) -> Option<Vec<u8>> {
+        let offset_from = fragment.offset as usize;
+        let offset_to = offset_from as usize + fragment.payload.len();
+
+        // Mark as inserted
+        let is_complete = self
+            .buffer_tracker
+            .mark_received(offset_from, offset_to, fragment.more);
+
+        // Make sure that the buffer is large enough
+        if offset_to >= self.data.as_ref().unwrap().len() {
+            self.data.as_mut().unwrap().resize(offset_to, 0);
+        }
+
+        // Copy the data into its position in the buffer
+        _ = &self.data.as_mut().unwrap()[offset_from..offset_to].copy_from_slice(&fragment.payload);
 
         // Check if is complete
-        if self.missing_indices.is_empty() {
-            Some(self.data.clone())
+        if is_complete {
+            self.data.take()
         } else {
             None
         }
@@ -104,8 +110,7 @@ impl FragmentedBlock {
 
 #[derive(Debug)]
 pub struct FragmentedBlocks {
-    blocks: HashMap<DgramHash, FragmentedBlock>,
-    datagram_size: usize,
+    blocks: HashMap<FragmentId, FragmentedBlock>,
     // ---
     last_printed: SystemTime,
 }
@@ -123,31 +128,30 @@ impl fmt::Display for FragmentedBlocks {
 }
 
 impl FragmentedBlocks {
-    pub fn new(datagram_size: usize) -> Self {
+    pub fn new() -> Self {
         FragmentedBlocks {
             blocks: HashMap::new(),
             last_printed: SystemTime::now(),
-            datagram_size,
         }
     }
 
-    pub fn insert(&mut self, dgram: &[u8]) -> Option<Vec<u8>> {
-        let (hash, idx, num_fragments, data) = parse_datagram(dgram);
-        let (_, _, payload_size) = common::get_datagram_sizes(self.datagram_size);
+    ///
+    /// Inserts the new fragment into the partialy received block.
+    ///
+    pub fn insert(&mut self, fragment: &[u8]) -> Option<Vec<u8>> {
+        let fragment = parse_fragment(fragment);
+        let fragment_id = fragment.id;
 
-        // If a new hash has come
+        // If a new hash has came in, create a new record
         self.blocks
-            .entry(hash)
-            .or_insert_with(|| FragmentedBlock::new(payload_size, num_fragments as usize));
+            .entry(fragment_id)
+            .or_insert_with(|| FragmentedBlock::new());
 
-        let record = self
-            .blocks
-            .get_mut(&hash)
-            .expect("Should be there already!");
+        let record = self.blocks.get_mut(&fragment_id).unwrap();
 
-        let res = match record.insert(idx as usize, &data) {
+        let res = match record.insert(fragment) {
             Some(x) => {
-                self.blocks.remove(&hash);
+                self.blocks.remove(&fragment_id);
                 Some(x)
             }
             None => None,
@@ -208,7 +212,6 @@ impl NetReceiver {
             params.running.clone(),
             socket_port,
         ));
-        let datagram_size = params.datagram_size;
 
         // Create a channel
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
@@ -258,7 +261,7 @@ impl NetReceiver {
         NetReceiver {
             params,
             rt,
-            blocks: FragmentedBlocks::new(datagram_size),
+            blocks: FragmentedBlocks::new(),
             rx,
         }
     }
