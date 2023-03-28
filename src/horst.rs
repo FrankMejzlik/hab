@@ -229,6 +229,7 @@ impl<
     type TreeHashBlock = [u8; TREE_HASH_SIZE];
 
     fn check_params() -> bool {
+        println!("{MSG_HASH_SIZE}, {}", <MsgHashFn as Digest>::output_size());
         if MSG_HASH_SIZE != <MsgHashFn as Digest>::output_size() {
             error!("The parameters do not match the size of a message hash function output!");
             return false;

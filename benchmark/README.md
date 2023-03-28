@@ -9,7 +9,7 @@
 tail -f ./env/sender/logs/output.log
 # ---
 # The main sender loop
-tail -f ./env/sender/logs/sender.log
+tail -f logs/sender.log
 # The UTF-8 repre of broadcasted messages
 tail -f ./env/sender/logs/broadcasted.log
 # The state of key layers
@@ -30,9 +30,9 @@ tail -f ./env/sender/logs/subscribers.log
 tail -f ./env/receiver/logs/output.log
 # ---
 # The main sender loop
-tail -f ./env/receiver/logs/receiver.log
+tail -f logs/receiver.log
 # The UTF-8 repre of valid received messages
-tail -f ./env/receiver/logs/received.log
+tail -f logs/received.log
 # The state of the public keys in the keystore
 tail -f ./env/receiver/logs/block_verifier.log
 tail -f ./env/receiver/logs/delivery_queues.log

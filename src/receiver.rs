@@ -3,7 +3,7 @@
 //!
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 // ---
@@ -29,7 +29,7 @@ pub struct ReceiverParams {
     pub key_lifetime: usize,
     pub cert_interval: usize,
     pub delivery_deadline: Duration,
-	/// An alternative output destination instread of network.
+    /// An alternative output destination instread of network.
     pub alt_input: Option<std::sync::mpsc::Receiver<Vec<u8>>>,
 }
 
@@ -40,6 +40,7 @@ pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'sta
     #[allow(dead_code)]
     prev_seqs: HashMap<SenderIdentity, SeqNum>,
     delivery: Arc<Mutex<DeliveryQueues>>,
+    skip_counter: Arc<AtomicUsize>,
 }
 
 impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifier> {
@@ -72,6 +73,9 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
         })));
         let delivery_clone = delivery.clone();
 
+        let skip_counter = Arc::new(AtomicUsize::new(0));
+        let skip_counter_clone = skip_counter.clone();
+
         std::thread::spawn(move || {
             let mut net_receiver = NetReceiver::new(net_recv_params);
 
@@ -83,10 +87,34 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
                         Ok(x) => x,
                         Err(e) => {
                             warn!(tag: "receiver", "Failed to receiver from the socket! ERRROR: {e}");
-                            continue;
+                            return;
                         }
                     };
                     //< UNLOCK
+                }
+
+                // If should based on `skip_counter_clone`
+                let mut skip = false;
+                loop {
+                    let skip_val = skip_counter_clone.load(Ordering::Acquire);
+                    if skip_val > 0 {
+                        if let Ok(_) = skip_counter_clone.compare_exchange(
+                            skip_val,
+                            skip_val - 1,
+                            Ordering::Release,
+                            Ordering::Acquire,
+                        ) {
+                            skip = true;
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                if skip {
+                    info!(tag:"sender", "Skipping a block!");
+                    continue;
                 }
 
                 {
@@ -114,6 +142,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
             verifier,
             prev_seqs: HashMap::new(),
             delivery,
+            skip_counter,
         }
     }
 }
@@ -141,8 +170,11 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
                     verif_result.metadata,
                 ));
             }
-            std::thread::sleep(Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(1));
         }
         Err(Error::new("Application terminating."))
+    }
+    fn ignore_next(&mut self, count: usize) {
+        self.skip_counter.store(count, Ordering::Release);
     }
 }

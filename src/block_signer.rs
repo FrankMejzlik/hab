@@ -27,6 +27,7 @@ use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha3::Digest;
 use xxhash_rust::xxh3::xxh3_64;
+
 // ---
 use crate::common::DiscreteDistribution;
 use crate::common::Error;
@@ -318,82 +319,35 @@ impl<
     fn store_state(&mut self) {
         create_dir_all(&self.params.id_dir).expect("!");
         let filepath = format!("{}/{}", self.params.id_dir, self.params.id_filename);
-        {
-            let mut file = File::create(filepath).expect("The file should be writable!");
 
-            let rng_bytes = serialize(&self.rng).expect("!");
-            let layers_bytes = serialize(&self.layers).expect("!");
-            let pks_bytes = serialize(&self.pks).expect("!");
-            let distr_bytes = serialize(&self.distr).expect("!");
-            let config_bytes = serialize(&self.params).expect("!");
+        let mut file = File::create(filepath).expect("The file should be writable!");
 
-            file.write_u64::<LittleEndian>(rng_bytes.len() as u64)
-                .expect("!");
-            file.write_u64::<LittleEndian>(layers_bytes.len() as u64)
-                .expect("!");
-            file.write_u64::<LittleEndian>(pks_bytes.len() as u64)
-                .expect("!");
-            file.write_u64::<LittleEndian>(distr_bytes.len() as u64)
-                .expect("!");
-            file.write_u64::<LittleEndian>(config_bytes.len() as u64)
-                .expect("!");
-            file.write_all(&rng_bytes)
-                .expect("Failed to write state to file");
-            file.write_all(&layers_bytes)
-                .expect("Failed to write state to file");
-            file.write_all(&pks_bytes)
-                .expect("Failed to write state to file");
-            file.write_all(&distr_bytes)
-                .expect("Failed to write state to file");
-            file.write_all(&config_bytes)
-                .expect("Failed to write state to file");
-        }
+        let rng_bytes = serialize(&self.rng).expect("!");
+        let layers_bytes = serialize(&self.layers).expect("!");
+        let pks_bytes = serialize(&self.pks).expect("!");
+        let distr_bytes = serialize(&self.distr).expect("!");
+        let config_bytes = serialize(&self.params).expect("!");
 
-        // Check
-        {
-            let filepath = format!("{}/{}", self.params.id_dir, self.params.id_filename);
-            let mut file = File::open(filepath).expect("!");
-
-            let rng_len = file.read_u64::<LittleEndian>().expect("!") as usize;
-            let layers_len = file.read_u64::<LittleEndian>().expect("!") as usize;
-            let pks_len = file.read_u64::<LittleEndian>().expect("!") as usize;
-            let distr_len = file.read_u64::<LittleEndian>().expect("!") as usize;
-            let config_len = file.read_u64::<LittleEndian>().expect("!") as usize;
-
-            let mut rng_bytes = vec![0u8; rng_len];
-            file.read_exact(&mut rng_bytes)
-                .expect("Failed to read state from file");
-
-            let mut layers_bytes = vec![0u8; layers_len];
-            file.read_exact(&mut layers_bytes)
-                .expect("Failed to read state from file");
-
-            let mut pks_bytes = vec![0u8; pks_len];
-            file.read_exact(&mut pks_bytes)
-                .expect("Failed to read state from file");
-
-            let mut distr_bytes = vec![0u8; distr_len];
-            file.read_exact(&mut distr_bytes)
-                .expect("Failed to read state from file");
-
-            let mut config_bytes = vec![0u8; config_len];
-            file.read_exact(&mut config_bytes)
-                .expect("Failed to read state from file");
-
-            let rng: CsPrng = deserialize(&rng_bytes).expect("!");
-
-            let layers = deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
-            let _pks =
-                deserialize::<PubKeyStore<HorstPublicKey<TREE_HASH_SIZE>>>(&pks_bytes).expect("!");
-            let distr: DiscreteDistribution = deserialize(&distr_bytes).expect("!");
-            let config: BlockSignerParams = deserialize(&config_bytes).expect("!");
-
-            assert_eq!(self.rng, rng);
-            assert_eq!(self.layers, layers);
-            //assert_eq!(self.pks, pks);
-            assert_eq!(self.distr, distr);
-            assert_eq!(self.params, config);
-        }
+        file.write_u64::<LittleEndian>(rng_bytes.len() as u64)
+            .expect("!");
+        file.write_u64::<LittleEndian>(layers_bytes.len() as u64)
+            .expect("!");
+        file.write_u64::<LittleEndian>(pks_bytes.len() as u64)
+            .expect("!");
+        file.write_u64::<LittleEndian>(distr_bytes.len() as u64)
+            .expect("!");
+        file.write_u64::<LittleEndian>(config_bytes.len() as u64)
+            .expect("!");
+        file.write_all(&rng_bytes)
+            .expect("Failed to write state to file");
+        file.write_all(&layers_bytes)
+            .expect("Failed to write state to file");
+        file.write_all(&pks_bytes)
+            .expect("Failed to write state to file");
+        file.write_all(&distr_bytes)
+            .expect("Failed to write state to file");
+        file.write_all(&config_bytes)
+            .expect("Failed to write state to file");
     }
 
     fn load_state(filepath: &str) -> Option<Self> {
@@ -581,7 +535,9 @@ impl<
     }
 
     fn sign(&mut self, data: Vec<u8>) -> Result<Self::SignedBlock, Error> {
+        //let start = utils::start();
         let (sk, pub_keys) = self.next_key();
+        //utils::stop("\t\tBlockSigner::next_key()", start);
 
         // Append the piggy-backed pubkeys to the payload
         let mut data_to_sign = data.clone();
@@ -590,6 +546,7 @@ impl<
         let signature = Self::Signer::sign(&data_to_sign, &sk);
         debug!(tag: "block_signer", "{}", self.dump_layers());
 
+        #[cfg(feature = "store_state")]
         self.store_state();
 
         Ok(SignedBlock {

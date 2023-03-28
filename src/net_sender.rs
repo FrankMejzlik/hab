@@ -199,33 +199,36 @@ impl NetSender {
 
         #[cfg(not(feature = "simulate_out_of_order"))]
         {
-            let mut dead_subs = vec![];
-            {
-                let subs_guard = self.subscribers.0.lock().expect("Should be lockable!");
+            let datagrams = Self::split_to_datagrams(data, self.params.datagram_size);
 
-                let datagrams = Self::split_to_datagrams(data, self.params.datagram_size);
-
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Should be positive.")
-                    .as_millis();
-                for (dest_sock_addr, valid_until) in subs_guard.iter() {
-                    // If the subscriber is dead already
-                    if *valid_until < now {
-                        dead_subs.push(*dest_sock_addr);
-                        continue;
+            // If the alternative sender is set
+            if let Some(alt_tx) = &mut self.params.alt_output {
+                for dgram in datagrams.iter() {
+                    if let Err(e) = alt_tx.send(dgram.clone()) {
+                        warn!(tag: "sender", "Failed to send datagram to the alternative output! ERROR: {}!",e);
                     }
+                    std::thread::sleep(Duration::from_micros(10));
+                }
+            }
+            // Else use the network as an output
+            else {
+                let mut dead_subs = vec![];
+                {
+                    let subs_guard = self.subscribers.0.lock().expect("Should be lockable!");
 
-                    trace!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
-                    for dgram in datagrams.iter() {
-                        // If the alternative sender is set
-                        if let Some(alt_tx) = &mut self.params.alt_output {
-                            if let Err(e) = alt_tx.send(dgram.clone()) {
-                                warn!(tag: "sender", "Failed to send datagram to the alternative output! ERROR: {}!",e);
-                            }
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Should be positive.")
+                        .as_millis();
+                    for (dest_sock_addr, valid_until) in subs_guard.iter() {
+                        // If the subscriber is dead already
+                        if *valid_until < now {
+                            dead_subs.push(*dest_sock_addr);
+                            continue;
                         }
-                        // Else use the network as an output
-                        else {
+
+                        trace!(tag: "sender", "\t\tSending to '{dest_sock_addr}'.");
+                        for dgram in datagrams.iter() {
                             if let Err(e) = self
                                 .rt
                                 .block_on(self.sender_socket.send_to(dgram, *dest_sock_addr))
@@ -236,12 +239,12 @@ impl NetSender {
                         }
                     }
                 }
-            }
 
-            // Remove dead subscribers
-            for dead_sub in dead_subs {
-                self.subscribers.remove(&dead_sub);
-                debug!(tag:"sender", "Deleted the dead subscriber '{dead_sub}'.");
+                // Remove dead subscribers
+                for dead_sub in dead_subs {
+                    self.subscribers.remove(&dead_sub);
+                    debug!(tag:"sender", "Deleted the dead subscriber '{dead_sub}'.");
+                }
             }
 
             Ok(())

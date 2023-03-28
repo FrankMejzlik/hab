@@ -43,6 +43,8 @@ pub trait SenderTrait {
 ///
 pub trait ReceiverTrait {
     fn receive(&mut self) -> Result<ReceivedBlock, Error>;
+    /// Ignores the next `count` incomming pieces.
+    fn ignore_next(&mut self, count: usize);
 }
 
 pub trait SignedBlockTrait {

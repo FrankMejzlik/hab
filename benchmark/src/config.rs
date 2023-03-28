@@ -2,8 +2,6 @@
 //! General static config file where you can tune the desired protocol paramters.
 //!
 
-use std::time::Duration;
-
 // ---
 use cfg_if::cfg_if;
 use clap::Parser;
@@ -17,8 +15,6 @@ use crate::config;
 
 /// A directory where the identity files lie (e.g. `BlockSigner` with secret & public keys).
 pub const ID_DIR: &str = ".identity/";
-/// A name of the file where the state of `BlockSigner` is serialized.
-pub const ID_FILENAME: &str = "id.bin";
 
 /// A directory where we store the logs by default (e.g. when you run `cargo run`)
 pub const LOGS_DIR: &str = "logs/";
@@ -130,7 +126,7 @@ pub struct Args {
     pub bench_type: BenchmarkType,
 
     // --- optional ---
-    #[clap(short, long, default_value = "../../config.toml")]
+    #[clap(short, long, default_value = "config.toml")]
     pub config: String,
 }
 

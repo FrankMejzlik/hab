@@ -468,26 +468,28 @@ macro_rules! log_graph {
         use std::process::Command;
         use std::process::Stdio;
 
-        let file = File::create("output.svg").unwrap();
-        let outputfile = Stdio::from(file);
+        if log::max_level() >= log::Level::Info && log::STATIC_MAX_LEVEL >= log::Level::Info {
+            let file = File::create("output.svg").unwrap();
+            let outputfile = Stdio::from(file);
 
-        let mut output = Command::new("echo")
-            .arg(&format!("{}", $graph))
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("failed to execute process");
+            let mut output = Command::new("echo")
+                .arg(&format!("{}", $graph))
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("failed to execute process");
 
-        let pipe = output.stdout.take().unwrap();
+            let pipe = output.stdout.take().unwrap();
 
-        let grep = Command::new("dot")
-            .arg("-T")
-            .arg("svg")
-            .stdin(pipe)
-            .stdout(outputfile)
-            .spawn()
-            .expect("failed to execute process");
+            let grep = Command::new("dot")
+                .arg("-T")
+                .arg("svg")
+                .stdin(pipe)
+                .stdout(outputfile)
+                .spawn()
+                .expect("failed to execute process");
 
-        grep.wait_with_output().expect("failed to wait on child");
+            grep.wait_with_output().expect("failed to wait on child");
+        }
     }};
 }
 

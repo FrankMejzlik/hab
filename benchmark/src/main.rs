@@ -9,7 +9,6 @@ use std::sync::{
     Arc,
 };
 use std::thread;
-use std::time::Duration;
 // ---
 use clap::Parser;
 #[allow(unused_imports)]
@@ -22,41 +21,9 @@ use crate::{
 };
 
 fn run_bench_reauth(_args: Args, _file_config: FileConfig, running: Arc<AtomicBool>) {
-	let sender_addr = "0.0.0.0:5555".to_string();
-	let seed = 40;
-	let target_addr = "127.0.0.1:5555".to_string();
-	let target_name = "alice".to_string();
-    let key_lifetime = 3;
-    let forward_cert = 1;
-    let max_delivery_deadline = Duration::from_millis(100);
-    let max_piece_size = 1024 * 1024 * 4;
-    let key_dist = vec![vec![4, 100], vec![2, 0], vec![1, 0]];
-    let id_dir = config::ID_DIR.to_string();
-    let id_filename = config::ID_FILENAME.to_string();
-    let datagram_size = 2_usize.pow(15);
-    let net_buffer_size = 2_usize.pow(16);
-    let subscriber_lifetime = Duration::from_secs(5);
-
-    let recv_params = BenchmarkerParams {
-        running,
-		sender_addr,
-		seed,
-		target_addr,
-		target_name,
-        key_lifetime: key_lifetime,
-        cert_interval: forward_cert,
-        delivery_deadline: max_delivery_deadline,
-        max_piece_size,
-        key_dist,
-        id_dir,
-        id_filename,
-        datagram_size,
-        net_buffer_size,
-        subscriber_lifetime,
-    };
-    info!("Running a benchmark with configuration: {recv_params:#?}");
-
-    let mut bench = Benchmarker::new(recv_params);
+    let mut bench = Benchmarker::new(BenchmarkerParams {
+        running: running.clone(),
+    });
     bench.benchmark_reauth();
 }
 

@@ -223,12 +223,14 @@ impl NetReceiver {
                     match alt_rx.recv() {
                         Ok(recv_data) => {
                             let recv = recv_data.len();
-                            buf.copy_from_slice(&recv_data);
+                            for i in 0..recv {
+                                buf[i] = recv_data[i];
+                            }
                             recv
                         }
                         Err(e) => {
-                            warn!(tag: "receiver", "Failed to receive the datagram from the alternative source! ERROR: {}!",e);
-                            0
+                            warn!(tag: "receiver", "Failed to receive the datagram from the alternative source, terminating! ERROR: {}!",e);
+                            return;
                         }
                     }
                 }

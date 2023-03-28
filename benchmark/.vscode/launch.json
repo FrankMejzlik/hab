@@ -7,74 +7,19 @@
 		{
 			"type": "lldb",
 			"request": "launch",
-			"name": "SENDER STDIN",
+			"name": "DEBUG",
 			"cargo": {
 				"args": [
 					"build",
-					"--bin=audibro",
-					"--package=audibro"
+					"--bin=hab-benchmark",
+					"--package=hab-benchmark"
 				],
 				"filter": {
-					"name": "audibro",
+					"name": "hab-benchmark",
 					"kind": "bin"
 				}
 			},
-			"args": ["sender", "0.0.0.0:5555"],
-			"cwd": "${workspaceFolder}"
-		},
-		{
-			"type": "lldb",
-			"request": "launch",
-			"name": "SENDER FILE",
-			"cargo": {
-				"args": [
-					"build",
-					"--bin=audibro",
-					"--package=audibro"
-				],
-				"filter": {
-					"name": "audibro",
-					"kind": "bin"
-				}
-			},
-			"args": ["sender","--input", "data.in"],
-			"cwd": "${workspaceFolder}"
-		},
-		{
-			"type": "lldb",
-			"request": "launch",
-			"name": "RECEIVER",
-			"cargo": {
-				"args": [
-					"build",
-					"--bin=audibro",
-					"--package=audibro"
-				],
-				"filter": {
-					"name": "audibro",
-					"kind": "bin"
-				}
-			},
-			"args": ["receiver", "127.0.0.1:5555"],
-			"cwd": "${workspaceFolder}"
-		},
-		{
-			"type": "lldb",
-			"request": "launch",
-			"name": "Debug unit tests in executable 'audibro'",
-			"cargo": {
-				"args": [
-					"test",
-					"--no-run",
-					"--bin=audibro",
-					"--package=audibro"
-				],
-				"filter": {
-					"name": "audibro",
-					"kind": "bin"
-				}
-			},
-			"args": [],
+			"args": ["re-authentication-time"],
 			"cwd": "${workspaceFolder}"
 		}
 	]

@@ -2,7 +2,10 @@
 //! Generally usefull functions.
 //!
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    io::{stdin, BufRead},
+    time::{SystemTime, UNIX_EPOCH},
+};
 // ---
 use crate::common::DiscreteDistribution;
 use bitreader::BitReader;
@@ -163,6 +166,28 @@ pub fn lifetimes_to_distr(key_dist: &Vec<Vec<usize>>) -> (DiscreteDistribution, 
 
     info!(tag: "sender", "weights: {:#?}, avg_rate: {:#?}", weights, avg_rate);
     (DiscreteDistribution::new(weights), avg_rate)
+}
+
+/// Blocks the thread until some input terminated with newline is sent do STDIN.
+pub fn input() {
+    let mut handle = stdin().lock();
+    let mut input = String::new();
+    handle.read_line(&mut input).expect("Failed to read line");
+}
+
+pub fn start() -> SystemTime {
+    std::time::SystemTime::now()
+}
+
+pub fn stop(scope: &str, start: SystemTime) {
+    println!(
+        "{}: {} ms",
+        scope,
+        std::time::SystemTime::now()
+            .duration_since(start)
+            .unwrap()
+            .as_millis()
+    );
 }
 
 #[cfg(test)]
