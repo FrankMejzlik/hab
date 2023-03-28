@@ -9,7 +9,7 @@ use std::time::Duration;
 // ---
 use crate::common::{BlockSignerParams, Error, MsgMetadata};
 use crate::net_sender::{NetSender, NetSenderParams};
-use crate::traits::{BlockSignerTrait, SenderTrait};
+use crate::traits::{BlockSignerTrait, IntoFromBytes, SenderTrait};
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
@@ -91,11 +91,8 @@ impl<BlockSigner: BlockSignerTrait> SenderTrait for Sender<BlockSigner> {
             let _msg_size = piece.len();
             let _msg_hash = xxhash_rust::xxh3::xxh3_64(&piece);
 
-            // Add the metadata to the message
-            Self::write_metadata(&mut piece, MsgMetadata { seq: msg_seq });
-
             // Sign along with the pubkeys
-            let signed_msg = match self.signer.sign(piece) {
+            let signed_msg = match self.signer.sign(piece, msg_seq) {
                 Ok(x) => x,
                 Err(e) => panic!("Failed to sign the data block!\nERROR: {:?}", e),
             };
@@ -109,8 +106,12 @@ impl<BlockSigner: BlockSignerTrait> SenderTrait for Sender<BlockSigner> {
             }
 
             // Broadcast over the network
-            let signed_msg_bytes =
-                bincode::serialize(&signed_msg).expect("Should be seriallizable.");
+            // let signed_msg_bytes =
+            //     bincode::serialize(&signed_msg).expect("Should be seriallizable.");
+
+            let signed_msg_bytes = signed_msg.into_network_bytes();
+            //BlockSigner::SignedBlock::from_network_bytes(signed_msg_bytes).unwrap();
+
             if let Err(e) = self.net_sender.broadcast(&signed_msg_bytes) {
                 return Err(Error::new(&format!("{:?}", e)));
             };

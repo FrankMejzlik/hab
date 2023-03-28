@@ -30,6 +30,7 @@ use std::boxed::Box;
 use std::fmt::{self, Display, Formatter};
 use std::marker::PhantomData;
 // ---
+use crate::common::Error;
 use hex::encode;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -38,7 +39,7 @@ use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
 use crate::merkle_tree::MerkleTree;
-use crate::traits::{KeyPair, PublicKeyBounds, SignatureSchemeTrait};
+use crate::traits::{IntoFromBytes, KeyPair, PublicKeyBounds, SignatureSchemeTrait};
 use crate::utils;
 
 pub type HorstKeypair<const T: usize, const N: usize> =
@@ -101,6 +102,27 @@ impl<const T: usize, const N: usize> Display for HorstSecretKey<T, N> {
 pub struct HorstPublicKey<const N: usize> {
     pub data: Vec<u8>,
 }
+
+impl<const N: usize> IntoFromBytes for HorstPublicKey<N> {
+    fn size() -> usize {
+        N
+    }
+
+    fn into_network_bytes(self) -> Vec<u8> {
+        self.data.clone()
+    }
+
+    fn from_network_bytes(bytes: Vec<u8>) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
+        if bytes.len() != N {
+            return Err(Error::new("Invalid public key size!"));
+        }
+        Ok(HorstPublicKey { data: bytes })
+    }
+}
+
 impl<const N: usize> PublicKeyBounds for HorstPublicKey<N> {}
 impl<const N: usize> HorstPublicKey<N> {
     pub fn new(root_hash: &[u8; N]) -> Self {
@@ -122,10 +144,59 @@ impl<const N: usize> fmt::Debug for HorstPublicKey<N> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HorstSignature<const N: usize, const K: usize, const TAUPLUS: usize> {
     pub data: Vec<Vec<Vec<u8>>>,
 }
+
+impl<const N: usize, const K: usize, const TAUPLUS: usize> IntoFromBytes
+    for HorstSignature<N, K, TAUPLUS>
+{
+    fn size() -> usize {
+        K * (TAUPLUS + 1) * N
+    }
+
+    fn into_network_bytes(self) -> Vec<u8> {
+        // For self.data write to a buffer
+        let mut buffer = vec![];
+        for i in 0..K {
+            for j in 0..TAUPLUS {
+                buffer.extend_from_slice(&self.data[i][j]);
+            }
+        }
+        buffer
+    }
+    fn from_network_bytes(bytes: Vec<u8>) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
+        println!("formula = {}", K * (TAUPLUS + 1) * N);
+        println!("bytes.len() = {}", bytes.len());
+
+        // From `bytes` parse into multidimensional vectors as in `self.data`
+        if bytes.len() != K * TAUPLUS * N {
+            return Err(Error::new("Invalid signature size!"));
+        }
+        let mut data = vec![];
+        data.reserve(K);
+        for i in 0..K {
+            let mut data_i = vec![];
+            data_i.reserve(TAUPLUS);
+            for j in 0..TAUPLUS {
+                let mut data_ij = vec![];
+                data_ij.reserve(N);
+                for k in 0..N {
+                    data_ij.push(bytes[i * (TAUPLUS * N) + j * N + k]);
+                }
+                data_i.push(data_ij);
+            }
+            data.push(data_i);
+        }
+
+        Ok(HorstSignature { data })
+    }
+}
+
 impl<const N: usize, const K: usize, const TAUPLUS: usize> HorstSignature<N, K, TAUPLUS> {
     pub fn new(data: [[[u8; N]; TAUPLUS]; K]) -> Self {
         // TODO: Reimplement using e.g. `ndarray` crate
@@ -347,14 +418,14 @@ mod tests {
     use std::println as debug;
     // ---
     use rand_chacha::ChaCha20Rng;
-    use sha3::{Sha3_256, Sha3_512};
+    use sha3::Sha3_512;
     // ---
     use super::*;
 
     const SEED: u64 = 42;
 
     /// Size of the hashes in a Merkle tree
-    const N: usize = 256 / 8;
+    const N: usize = 512 / 8;
     /// Number of SK segments in signature
     const K: usize = 32;
     /// Depth of the Merkle tree (without the root layer)
@@ -368,14 +439,14 @@ mod tests {
     // Hash fn for message hashing. msg: * -> N
     type MsgHashFn = Sha3_512;
     // Hash fn for tree & secret hashing. sk: 2N -> N & tree: N -> N
-    type TreeHashFn = Sha3_256;
+    type TreeHashFn = Sha3_512;
 
     // ---
 
     const TAUPLUS: usize = TAU + 1;
     const T: usize = 2_usize.pow(TAU as u32);
     const MSG_HASH_SIZE: usize = (K * TAU) / 8;
-    const TREE_HASH_SIZE: usize = N;
+    const TREE_HASH_SIZE: usize = MSG_HASH_SIZE;
 
     type Signer = HorstSigScheme<
         K,
@@ -388,6 +459,8 @@ mod tests {
         MsgHashFn,
         TreeHashFn,
     >;
+
+    type Signature = HorstSignature<N, K, TAUPLUS>;
 
     #[test]
     fn test_horst_sign_verify() {
@@ -418,5 +491,27 @@ mod tests {
         let bob_from_eve_valid = Signer::verify(msg, &eve_sign, &alice_key_pair.public);
         debug!("Invalid signature check's result: {}", bob_from_eve_valid);
         assert!(!bob_from_eve_valid, "The invalid signature was accepted!");
+    }
+
+    #[test]
+    fn test_info_from_bytes() {
+        // Generate nested random bytes to call Signature::new
+        let mut rng = CsPrng::seed_from_u64(SEED);
+        let mut data = [[[0_u8; N]; TAUPLUS]; K];
+
+        for i in 0..K {
+            for j in 0..TAUPLUS {
+                rng.fill_bytes(&mut data[i][j]);
+            }
+        }
+
+        let sig = Signature::new(data);
+        let exp_sig = sig.clone();
+
+        // Serialize into network bytes
+        let bytes = sig.into_network_bytes();
+        let act_sig = Signature::from_network_bytes(bytes).unwrap();
+
+        assert_eq!(exp_sig, act_sig, "Signature deserialization failed!");
     }
 }

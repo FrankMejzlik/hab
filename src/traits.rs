@@ -22,7 +22,10 @@ use crate::common::{BlockSignerParams, Error, ReceivedBlock, SeqNum, VerifyResul
 
 /// The trait bounds we appply on a `PublicKey` generic type.
 
-pub trait PublicKeyBounds: Debug + Clone + PartialEq + Eq + PartialOrd + Ord {}
+pub trait PublicKeyBounds:
+    Debug + Clone + PartialEq + Eq + PartialOrd + Ord + IntoFromBytes
+{
+}
 // ----------------------------------
 
 ///
@@ -50,6 +53,13 @@ pub trait ReceiverTrait {
 pub trait SignedBlockTrait {
     fn hash(&self) -> u64;
 }
+pub trait IntoFromBytes {
+    fn size() -> usize;
+    fn into_network_bytes(self) -> Vec<u8>;
+    fn from_network_bytes(bytes: Vec<u8>) -> Result<Self, Error>
+    where
+        Self: Sized;
+}
 
 ///
 /// A high-level interface for signing the block of data and receiving the block of data
@@ -71,10 +81,10 @@ pub trait BlockSignerTrait {
     type SecretKey;
     type PublicKey: PublicKeyBounds;
     type Signature;
-    type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned;
+    type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned + IntoFromBytes;
 
     fn new(params: BlockSignerParams) -> Self;
-    fn sign(&mut self, data: Vec<u8>) -> Result<Self::SignedBlock, Self::Error>;
+    fn sign(&mut self, data: Vec<u8>, seq: SeqNum) -> Result<Self::SignedBlock, Self::Error>;
     fn next_seq(&mut self) -> SeqNum;
 }
 
@@ -94,7 +104,7 @@ pub trait BlockVerifierTrait {
     type SecretKey;
     type PublicKey: PublicKeyBounds;
     type Signature;
-    type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned;
+    type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned + IntoFromBytes;
 
     fn new(params: BlockSignerParams) -> Self;
     fn verify(&mut self, data: Vec<u8>) -> Result<VerifyResult, Self::Error>;

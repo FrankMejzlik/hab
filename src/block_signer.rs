@@ -7,6 +7,7 @@ use std::fmt::Formatter;
 use std::fs::{create_dir_all, File};
 use std::io::{Read, Write};
 use std::marker::PhantomData;
+use std::mem::size_of;
 // ---
 use crate::common::BlockSignerParams;
 use crate::common::MsgMetadata;
@@ -15,7 +16,9 @@ use crate::common::SeqNum;
 use crate::common::VerifyResult;
 use crate::constants;
 use crate::log_graph;
+use crate::traits::IntoFromBytes;
 use bincode::{deserialize, serialize};
+use byteorder::BigEndian;
 use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
@@ -72,26 +75,59 @@ impl<const T: usize, const N: usize> Display for KeyPairStoreCont<T, N> {
 ///
 /// A wrapper for one key that is used for the transporation over a network.
 ///
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PubKeyTransportCont<Key> {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PubKeyTransportCont<Key: IntoFromBytes> {
     pub key: Key,
     pub layer: u8,
 }
-impl<Key> PubKeyTransportCont<Key> {
+impl<Key: IntoFromBytes> PubKeyTransportCont<Key> {
     pub fn new(key: Key, layer: u8) -> Self {
         PubKeyTransportCont { key, layer }
     }
 }
+impl<Key: IntoFromBytes> IntoFromBytes for PubKeyTransportCont<Key> {
+    fn size() -> usize {
+        Key::size() + size_of::<u8>()
+    }
+
+    fn into_network_bytes(self) -> Vec<u8> {
+        let mut bytes_cursor = std::io::Cursor::new(vec![]);
+
+        bytes_cursor.write_u8(self.layer).unwrap();
+        bytes_cursor
+            .write_all(&self.key.into_network_bytes())
+            .unwrap();
+
+        bytes_cursor.into_inner()
+    }
+    fn from_network_bytes(bytes: Vec<u8>) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
+        let mut reader = std::io::Cursor::new(bytes);
+
+        // Read the layer
+        let layer = reader.read_u8().unwrap();
+
+        // Read the rest of bytes as key
+        let mut key_bytes = vec![0; Key::size()];
+        reader.read_exact(&mut key_bytes).unwrap();
+        let key = Key::from_network_bytes(key_bytes).unwrap();
+
+        Ok(PubKeyTransportCont { key, layer })
+    }
+}
 
 /// Struct holding a data to send with the signature and piggy-backed public keys.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize> {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize + IntoFromBytes> {
     pub data: Vec<u8>,
     pub signature: Signature,
     pub pub_keys: Vec<PubKeyTransportCont<PublicKey>>,
+    pub seq: SeqNum,
 }
 
-impl<Signature: Serialize, PublicKey: Serialize> SignedBlockTrait
+impl<Signature: Serialize, PublicKey: Serialize + IntoFromBytes> SignedBlockTrait
     for SignedBlock<Signature, PublicKey>
 {
     fn hash(&self) -> u64 {
@@ -99,6 +135,108 @@ impl<Signature: Serialize, PublicKey: Serialize> SignedBlockTrait
         let hash_signature = xxh3_64(&serialize(&self.signature).expect(constants::EX_SER));
         let hash_pubkeys = xxh3_64(&serialize(&self.pub_keys).expect(constants::EX_SER));
         hash_data ^ hash_signature ^ hash_pubkeys
+    }
+}
+impl<Signature: Serialize + IntoFromBytes, PublicKey: Serialize + IntoFromBytes> IntoFromBytes
+    for SignedBlock<Signature, PublicKey>
+{
+    fn size() -> usize {
+        // We don't know the number of PKs :(
+        2 * 8 + 2 * 4 + Signature::size() + PublicKey::size()
+    }
+
+    fn into_network_bytes(self) -> Vec<u8> {
+        let mut bytes_cursor = std::io::Cursor::new(vec![]);
+
+        // Write the scheme ID
+        bytes_cursor.write_u64::<BigEndian>(1 /*TODO*/).unwrap();
+
+        // Write the signature
+        bytes_cursor
+            .write_all(&self.signature.into_network_bytes())
+            .unwrap();
+
+        // Write the sequence number
+        bytes_cursor.write_u64::<BigEndian>(self.seq).unwrap();
+
+        // Write the number of public keys
+        bytes_cursor
+            .write_u32::<BigEndian>(self.pub_keys.len() as u32)
+            .unwrap();
+
+        // Write the data size
+        bytes_cursor
+            .write_u32::<BigEndian>(self.data.len() as u32)
+            .unwrap();
+
+        // Write the public keys
+        bytes_cursor
+            .write_u32::<BigEndian>(self.pub_keys.len() as u32)
+            .unwrap();
+        for pk in self.pub_keys {
+            bytes_cursor.write_all(&pk.into_network_bytes()).unwrap();
+        }
+
+        // Write the data
+        bytes_cursor
+            .write_u32::<BigEndian>(self.data.len() as u32)
+            .unwrap();
+        bytes_cursor.write_all(&self.data).unwrap();
+
+        bytes_cursor.into_inner()
+    }
+    fn from_network_bytes(bytes: Vec<u8>) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
+        let sig_size = Signature::size();
+        let pk_size = PublicKey::size();
+        let bytes_size = bytes.len();
+
+        let mut reader = std::io::Cursor::new(bytes);
+
+        // Read the scheme ID
+        let _scheme_id = reader.read_u64::<BigEndian>().unwrap();
+
+        // Read the signature
+        let mut sig_bytes = vec![0; sig_size];
+        reader.read_exact(&mut sig_bytes).unwrap();
+        let signature = Signature::from_network_bytes(sig_bytes).unwrap();
+
+        // Read the sequence number
+        let seq = reader.read_u64::<BigEndian>().unwrap();
+
+        // Read the nubmer of public keys
+        let pub_key_count = reader.read_u32::<BigEndian>().unwrap();
+
+        // Read the payload size
+        let payload_size = reader.read_u32::<BigEndian>().unwrap();
+
+        // Read all the PKs
+        let mut pub_keys = vec![];
+        for _ in 0..pub_key_count {
+            let mut pk_bytes = vec![0; pk_size];
+            reader.read_exact(&mut pk_bytes).unwrap();
+            let pk = PubKeyTransportCont::from_network_bytes(pk_bytes).unwrap();
+            pub_keys.push(pk);
+        }
+
+        // Read the rest as the payload
+        let mut data = vec![0; payload_size as usize];
+        reader.read_exact(&mut data).unwrap();
+
+        assert_eq!(
+            reader.position() as usize,
+            bytes_size,
+            "There must not be any bytes left!"
+        );
+
+        Ok(SignedBlock {
+            data,
+            signature,
+            pub_keys,
+            seq,
+        })
     }
 }
 
@@ -534,7 +672,7 @@ impl<
         new_inst
     }
 
-    fn sign(&mut self, data: Vec<u8>) -> Result<Self::SignedBlock, Error> {
+    fn sign(&mut self, data: Vec<u8>, seq: SeqNum) -> Result<Self::SignedBlock, Error> {
         //let start = utils::start();
         let (sk, pub_keys) = self.next_key();
         //utils::stop("\t\tBlockSigner::next_key()", start);
@@ -553,6 +691,7 @@ impl<
             data,
             signature,
             pub_keys,
+            seq,
         })
     }
     fn next_seq(&mut self) -> SeqNum {

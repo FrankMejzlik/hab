@@ -356,35 +356,29 @@ mod tests {
 
     #[test]
     fn test_split_to_datagrams() {
-        //
-        // +-----------------+-----------+-----------+-----------------------------------+
-        // |    hash (8B)    |  idx (4B) | total (4B)| payload (up to max datagram size) |
-        // +-----------------+-----------+-----------+-----------------------------------+
-        //
-
-        let (dgram_size, header_size, _) = common::get_fragment_dgram_sizes(DGRAM_SIZE);
-
         let mut rng = rand::thread_rng();
         let data: Vec<u8> = (0..20000).map(|_| rng.gen()).collect();
 
         let hash = xxh3_64(&data);
-        let num_dgrams = (data.len() as f32 / (dgram_size - header_size) as f32).ceil() as u32;
+        let exp_payload_size = DGRAM_SIZE - 20; // UDP + our header
 
         let datagrams = NetSender::split_to_datagrams(&data, DGRAM_SIZE);
 
         let mut act_payload = vec![];
 
         for (idx, d) in datagrams.iter().enumerate() {
-            let index = idx as u32;
+            let index = (idx * exp_payload_size) as u32;
+            let mut offset = index.to_be_bytes();
+            if idx != datagrams.len() - 1 {
+                offset[0] |= 0b1000_0000;
+            }
 
             // Check hash
-            assert_eq!(&d[0..8], &hash.to_le_bytes());
+            assert_eq!(&d[0..8], &hash.to_be_bytes());
             // Check datagram indices
-            assert_eq!(&d[8..12], &index.to_le_bytes());
-            // Check datagram count
-            assert_eq!(&d[12..16], &num_dgrams.to_le_bytes());
+            assert_eq!(&d[8..12], &offset);
 
-            act_payload.extend_from_slice(&d[16..]);
+            act_payload.extend_from_slice(&d[12..]);
         }
         assert_eq!(act_payload, data);
     }
