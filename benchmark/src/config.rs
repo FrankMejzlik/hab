@@ -6,7 +6,7 @@
 use cfg_if::cfg_if;
 use clap::Parser;
 use rand_chacha::ChaCha20Rng;
-use sha3::{Sha3_256, Sha3_512};
+use sha3::Sha3_512;
 // ---
 use hab::utils;
 use hab::BlockSigner;
@@ -68,6 +68,8 @@ cfg_if! {
     }
     // *** DEBUG ***
     else {
+        use sha3::{Sha3_256, Sha3_512};
+
         /// Size of the hashes in a Merkle tree
         const N: usize = 256 / 8;
         /// Number of SK segments in signature
