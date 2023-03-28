@@ -5,6 +5,7 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fs::{create_dir_all, File};
+use std::io::Cursor;
 use std::io::{Read, Write};
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -655,9 +656,25 @@ impl<
         let (sk, pub_keys) = self.next_key();
         //utils::stop("\t\tBlockSigner::next_key()", start);
 
-        // Append the piggy-backed pubkeys to the payload
-        let mut data_to_sign = data.clone();
-        data_to_sign.append(&mut serialize(&pub_keys).expect(constants::EX_SER));
+        // Prepare the data to sign in the correct order
+        let mut data_to_sign = Cursor::new(vec![]);
+        // Write `seq` as a big-endian u64
+        data_to_sign.write_u64::<BigEndian>(seq).unwrap();
+        data_to_sign
+            .write_u32::<BigEndian>(pub_keys.len() as u32)
+            .unwrap();
+        data_to_sign
+            .write_u32::<BigEndian>(data.len() as u32)
+            .unwrap();
+        // Pubkeys
+        for pk in pub_keys.iter() {
+            data_to_sign
+                .write_all(&pk.clone().into_network_bytes())
+                .unwrap();
+        }
+        // Write the data
+        data_to_sign.write_all(&data).unwrap();
+        let data_to_sign = data_to_sign.into_inner();
 
         let signature = Self::Signer::sign(&data_to_sign, &sk);
         debug!(tag: "block_signer", "{}", self.dump_layers());
@@ -757,9 +774,27 @@ impl<
         };
         let hash = signed_block.hash();
 
-        // Signature MUST be verified also with public keys attached
-        let mut to_verify = signed_block.data.clone();
-        to_verify.append(&mut serialize(&signed_block.pub_keys).expect(constants::EX_SER));
+        // Prepare binary buffer to verify signature on
+        let mut data_to_sign = Cursor::new(vec![]);
+        // Write `seq` as a big-endian u64
+        data_to_sign
+            .write_u64::<BigEndian>(signed_block.seq)
+            .unwrap();
+        data_to_sign
+            .write_u32::<BigEndian>(signed_block.pub_keys.len() as u32)
+            .unwrap();
+        data_to_sign
+            .write_u32::<BigEndian>(signed_block.data.len() as u32)
+            .unwrap();
+        // Pubkeys
+        for pk in signed_block.pub_keys.iter() {
+            data_to_sign
+                .write_all(&pk.clone().into_network_bytes())
+                .unwrap();
+        }
+        // Write the data
+        data_to_sign.write_all(&signed_block.data).unwrap();
+        let to_verify = data_to_sign.into_inner();
 
         // Read the metadata from the message
         let msg = signed_block.data;
@@ -790,16 +825,9 @@ impl<
 
             log_graph!(self.dump_pks());
 
-            // let mut handle = stdin().lock();
-            // let mut input = String::new();
-            // handle.read_line(&mut input).expect("Failed to read line");
-
             // Insert the initial identity node that is the sig
             (new_id.clone(), Some(x))
         };
-
-        // debug!(tag: "receiver", "pks: {:#?}", self.pks);
-        //debug!(tag: "receiver", "sender_id: {:#?}, verify_ours: {:?}", sender_id, verify_ours);
 
         // Verify with this pubkey
         if let Some(verify_idx) = verify_ours {
