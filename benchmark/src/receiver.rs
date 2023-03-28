@@ -108,7 +108,7 @@ impl AudiBroReceiver {
                 }
             }
 
-            debug!(tag: "received", "[{}][{:?}] {}", received_block.metadata.seq, received_block.sender, &received_block.data.len());
+            debug!(tag: "received", "[{}][{:?}] {}", received_block.metadata.seq, received_block.sender, hash);
         }
     }
 }

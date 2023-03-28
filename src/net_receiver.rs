@@ -45,9 +45,9 @@ pub fn parse_fragment(data: &[u8]) -> Fragment {
     _ = data_cursor.read_exact(&mut offset_more);
 
     // Parse the more flag from the last bit
-    let more = offset_more[3] & 0b00000001 == 1;
+    let more = offset_more[0] & 0b10000000 > 0;
     // Pull down the last bit
-    offset_more[3] &= 0b11111110;
+    offset_more[0] &= 0b01111111;
 
     // Parse the offset
     let offset = FragmentOffset::from_be_bytes(offset_more);
@@ -143,7 +143,8 @@ impl FragmentedBlocks {
         let fragment_id = fragment.id;
 
         // If a new hash has came in, create a new record
-        let record = self.blocks
+        let record = self
+            .blocks
             .entry(fragment_id)
             .or_insert_with(|| FragmentedBlock::new());
 

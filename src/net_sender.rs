@@ -21,6 +21,7 @@ use tokio::net::UdpSocket;
 use tokio::runtime::Runtime;
 use xxhash_rust::xxh3::xxh3_64;
 
+use crate::common::FragmentOffset;
 // ---
 use crate::common::{self, UnixTimestamp};
 use crate::utils;
@@ -92,7 +93,7 @@ impl NetSender {
 
     ///
     /// Splits the provided data payload into fragments of specific size do they fit within the
-	/// single datagram of a configured size of `max_dgram_size`. In BE.
+    /// single datagram of a configured size of `max_dgram_size`. In BE.
     ///
     /// +-----------------+-------------+-----------+----------------------------------------+
     /// | fragment_id (8B)| offset (31b)| more (1b) | payload (up to max datagram size - 8B) |
@@ -117,6 +118,10 @@ impl NetSender {
 
         // Iterate of the number of dgrams to create
         for _ in 0..num_dgrams {
+            // The bytes holding 31 bits of the offset and 1 bit of more flag
+            let mut offset_more = (in_cursor.position() as FragmentOffset).to_be_bytes();
+            let _offset = in_cursor.position();
+
             let mut payload_bytes = vec![0; payload_size];
             if let Ok(written) = in_cursor.read(&mut payload_bytes) {
                 let unwritten = payload_size - written;
@@ -126,20 +131,18 @@ impl NetSender {
                 }
             }
 
-            // The bytes holding 31 bits of the offset and 1 bit of more flag
-            let mut offset_more = in_cursor.position().to_be_bytes();
-
             // If this is the last datagram, set the more flag to 0
-            if in_cursor.position() == data_size as u64 {
-                // Set the last bit to 0
-                offset_more[3] &= 0b0111_1111;
+            if in_cursor.position() != data_size as u64 {
+                // Set the MSb
+                offset_more[0] |= 0b1000_0000;
             }
 
             let mut out_cursor = Cursor::new(vec![]);
             _ = out_cursor.write(&fragment_id).unwrap();
             _ = out_cursor.write(&offset_more).unwrap();
+            _ = out_cursor.write(&payload_bytes).unwrap();
 
-            dgram_payloads.push(payload_bytes);
+            dgram_payloads.push(out_cursor.into_inner());
         }
 
         dgram_payloads

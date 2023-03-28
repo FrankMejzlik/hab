@@ -7,12 +7,12 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 // ---
-use xxhash_rust::xxh3::xxh3_64;
 // ---
 use crate::common::{BlockSignerParams, Error, ReceivedBlock, SenderIdentity, SeqNum};
 use crate::delivery_queues::{DeliveryQueues, DeliveryQueuesParams};
 use crate::net_receiver::{NetReceiver, NetReceiverParams};
 use crate::traits::{BlockVerifierTrait, ReceiverTrait};
+use crate::utils;
 // ---
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
@@ -113,7 +113,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
                 }
 
                 if skip {
-                    info!(tag:"sender", "Skipping a block!");
+                    trace!(tag:"receiver", "Skipping a block!");
                     continue;
                 }
 
@@ -162,7 +162,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
             }
 
             if let Some(verif_result) = received {
-                debug!(tag: "delivery_queues","[{}][{}][{}] {}", verif_result.metadata.seq, verif_result.hash, verif_result.msg.len(), xxh3_64(&verif_result.msg));
+                debug!(tag: "delivery_queues","[{}][{}][{}] {}", verif_result.metadata.seq, verif_result.hash, verif_result.msg.len(), utils::sha2_256_str(&verif_result.msg));
 
                 return Ok(ReceivedBlock::new(
                     verif_result.msg,

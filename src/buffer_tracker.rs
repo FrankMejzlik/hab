@@ -1,9 +1,24 @@
-#[derive(Clone, Copy, Debug)]
+use std::fmt::{Debug, Formatter};
+
+#[derive(Clone, Copy)]
 struct Interval {
     start: usize,
     end: usize,
     last: bool,
 }
+
+impl Debug for Interval {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "[{}, {}){}",
+            self.start,
+            self.end,
+            if self.last { "<>" } else { "" }
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BufferTracker {
     received_intervals: Vec<Interval>,
@@ -39,7 +54,7 @@ impl BufferTracker {
             else {
                 new_interval.start = std::cmp::min(interval.start, new_interval.start);
                 new_interval.end = std::cmp::max(interval.end, new_interval.end);
-				new_interval.last = new_interval.last || interval.last;
+                new_interval.last = new_interval.last || interval.last;
             }
         }
         new_receiverd_intervals.push(new_interval);

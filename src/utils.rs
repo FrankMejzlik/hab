@@ -11,6 +11,7 @@ use crate::common::DiscreteDistribution;
 use bitreader::BitReader;
 use chrono::{DateTime, Utc};
 use hex::{decode, encode};
+use sha2::{Digest, Sha256};
 // ---
 #[allow(unused_imports)]
 use crate::{debug, error, info, log_input, trace, warn};
@@ -188,6 +189,19 @@ pub fn stop(scope: &str, start: SystemTime) {
             .unwrap()
             .as_millis()
     );
+}
+
+pub fn sha2_256(data: &[u8]) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hasher.finalize().to_vec()
+}
+
+pub fn sha2_256_str(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    format!("{:x}", result)
 }
 
 #[cfg(test)]
