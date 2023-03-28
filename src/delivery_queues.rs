@@ -44,11 +44,11 @@ impl DeliveryQueues {
         let top = self.heap.peek();
         if let Some(x) = top {
             // If this is the next message
-            if x.metadata.seq == self.next_delivery_seq {
+            if x.seq == self.next_delivery_seq {
                 // Deliver it right away
                 self.next_delivery_seq += 1;
                 self.next_delivery_deadline = SystemTime::now() + self.params.deadline;
-                debug!(tag: "delivery", "Delivering message {} in sequence.", x.metadata.seq);
+                debug!(tag: "delivery", "Delivering message {} in sequence.", x.seq);
                 return self.heap.pop();
             }
             // If the next message is not the direct successor but the deadline has elapsed already
@@ -56,9 +56,9 @@ impl DeliveryQueues {
                 // Set the next deadline
                 self.next_delivery_deadline = SystemTime::now() + self.params.deadline;
                 // Set the seq
-                self.next_delivery_seq = x.metadata.seq + 1;
+                self.next_delivery_seq = x.seq + 1;
 
-                debug!(tag: "delivery", "Delivering message {} due to deadline.", x.metadata.seq);
+                debug!(tag: "delivery", "Delivering message {} due to deadline.", x.seq);
                 return self.heap.pop();
             }
         }
@@ -76,7 +76,7 @@ impl DeliveryQueues {
             // Verified messages are delivered in-order
             _ => {
                 // If the message is not yet obsolete
-                if ver_res.metadata.seq >= self.next_delivery_seq {
+                if ver_res.seq >= self.next_delivery_seq {
                     if self.heap.is_empty() {
                         self.next_delivery_deadline = SystemTime::now() + self.params.deadline;
                     }

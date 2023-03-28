@@ -10,7 +10,6 @@ use std::marker::PhantomData;
 use std::mem::size_of;
 // ---
 use crate::common::BlockSignerParams;
-use crate::common::MsgMetadata;
 use crate::common::MsgVerification;
 use crate::common::SeqNum;
 use crate::common::VerifyResult;
@@ -75,7 +74,7 @@ impl<const T: usize, const N: usize> Display for KeyPairStoreCont<T, N> {
 ///
 /// A wrapper for one key that is used for the transporation over a network.
 ///
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct PubKeyTransportCont<Key: IntoFromBytes> {
     pub key: Key,
     pub layer: u8,
@@ -119,7 +118,7 @@ impl<Key: IntoFromBytes> IntoFromBytes for PubKeyTransportCont<Key> {
 }
 
 /// Struct holding a data to send with the signature and piggy-backed public keys.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize + IntoFromBytes> {
     pub data: Vec<u8>,
     pub signature: Signature,
@@ -170,17 +169,11 @@ impl<Signature: Serialize + IntoFromBytes, PublicKey: Serialize + IntoFromBytes>
             .unwrap();
 
         // Write the public keys
-        bytes_cursor
-            .write_u32::<BigEndian>(self.pub_keys.len() as u32)
-            .unwrap();
         for pk in self.pub_keys {
             bytes_cursor.write_all(&pk.into_network_bytes()).unwrap();
         }
 
         // Write the data
-        bytes_cursor
-            .write_u32::<BigEndian>(self.data.len() as u32)
-            .unwrap();
         bytes_cursor.write_all(&self.data).unwrap();
 
         bytes_cursor.into_inner()
@@ -190,7 +183,7 @@ impl<Signature: Serialize + IntoFromBytes, PublicKey: Serialize + IntoFromBytes>
         Self: Sized,
     {
         let sig_size = Signature::size();
-        let pk_size = PublicKey::size();
+        let pk_size = PubKeyTransportCont::<PublicKey>::size();
         let bytes_size = bytes.len();
 
         let mut reader = std::io::Cursor::new(bytes);
@@ -413,21 +406,6 @@ impl<
     >
     BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
 {
-    ///
-    /// Reads the additional data in the message and returns it along with the clean message.
-    ///
-    fn read_metadata(mut msg: Vec<u8>) -> (MsgMetadata, Vec<u8>) {
-        let len = msg.len() - std::mem::size_of::<usize>();
-
-        let seq = SeqNum::from_le_bytes(
-            msg[len..]
-                .try_into()
-                .expect("Should have a correct length!"),
-        );
-        msg.drain(len..);
-        (MsgMetadata { seq }, msg)
-    }
-
     fn new_id(&mut self, petname: String) -> SenderIdentity {
         let id = SenderIdentity::new(self.pks.next_id, petname);
         self.pks.next_id += 1;
@@ -773,7 +751,7 @@ impl<
     }
 
     fn verify(&mut self, data: Vec<u8>) -> Result<VerifyResult, Error> {
-        let signed_block: Self::SignedBlock = match deserialize(&data) {
+        let signed_block = match Self::SignedBlock::from_network_bytes(data) {
             Ok(x) => x,
             Err(_) => return Err(Error::new(constants::DESER_FAILED)),
         };
@@ -784,7 +762,7 @@ impl<
         to_verify.append(&mut serialize(&signed_block.pub_keys).expect(constants::EX_SER));
 
         // Read the metadata from the message
-        let (metadata, msg) = Self::read_metadata(signed_block.data);
+        let msg = signed_block.data;
 
         let mut verification = MsgVerification::Unverified; //< By default it's unverified
 
@@ -806,7 +784,7 @@ impl<
             info!(tag: "receiver", "(!) Generating a new trusted identity with keys from the first message: {new_id:#?} (!)");
 
             let new_key =
-                StoredPubKey::new_with_identity(verify_hint_key, new_id.clone(), metadata.seq);
+                StoredPubKey::new_with_identity(verify_hint_key, new_id.clone(), signed_block.seq);
 
             let x = self.pks.insert_identity_key(new_key, &new_id);
 
@@ -841,7 +819,7 @@ impl<
                     verify_idx,
                     signed_block.pub_keys,
                     &sender_id,
-                    metadata.seq,
+                    signed_block.seq,
                 );
 
                 // Handle SCCs & identities
@@ -868,13 +846,102 @@ impl<
         self.store_state();
         log_graph!(self.dump_pks());
 
-        debug!(tag: "receiver", "Processed the message {}.", metadata.seq);
+        debug!(tag: "receiver", "Processed the message {}.", signed_block.seq);
 
         Ok(VerifyResult {
             msg,
-            metadata,
+            seq: signed_block.seq,
             verification,
             hash,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // ---
+    use rand_chacha::ChaCha20Rng;
+    // ---
+    use super::*;
+    use crate::horst::HorstSignature;
+
+    const SEED: u64 = 42;
+
+    /// Size of the hashes in a Merkle tree
+    const N: usize = 512 / 8;
+    /// Number of SK segments in signature
+    const K: usize = 32;
+    /// Depth of the Merkle tree (without the root layer)
+    const TAU: usize = 16;
+    type CsPrng = ChaCha20Rng;
+    const TAUPLUS: usize = TAU + 1;
+
+    type Signature = HorstSignature<N, K, TAUPLUS>;
+    type SigBlock = SignedBlock<Signature, HorstPublicKey<N>>;
+
+    #[test]
+    fn test_signed_block_info_from_bytes() {
+        // Generate nested random bytes to call Signature::new
+        let mut rng = CsPrng::seed_from_u64(SEED);
+        let mut data_0 = [0_u8; N];
+        rng.fill_bytes(&mut data_0);
+        let mut data_1 = data_0.clone();
+        data_1.reverse();
+
+        let key_0 = PubKeyTransportCont::new(HorstPublicKey::new(&data_0), 2);
+        let key_1 = PubKeyTransportCont::new(HorstPublicKey::new(&data_1), 62);
+
+        let exp_key_0 = key_0.clone();
+        let exp_key_1 = key_1.clone();
+
+        // Serialize into network bytes
+        let bytes = key_0.into_network_bytes();
+        let act_key_0 = PubKeyTransportCont::from_network_bytes(bytes).unwrap();
+        let bytes = key_1.into_network_bytes();
+        let act_key_1 = PubKeyTransportCont::from_network_bytes(bytes).unwrap();
+
+        assert_eq!(
+            act_key_0, exp_key_0,
+            "PubKeyTransportCont deserialization failed!"
+        );
+        assert_eq!(
+            act_key_1, exp_key_1,
+            "PubKeyTransportCont deserialization failed!"
+        );
+    }
+
+    #[test]
+    fn test_pub_key_transport_cont_info_from_bytes() {
+        let mut rng = CsPrng::seed_from_u64(SEED);
+        let mut data = [[[0_u8; N]; TAUPLUS]; K];
+
+        for i in 0..K {
+            for j in 0..TAUPLUS {
+                rng.fill_bytes(&mut data[i][j]);
+            }
+        }
+
+        let sig = Signature::new(data);
+
+        let mut payload = [0; 10];
+        rng.fill_bytes(&mut payload);
+
+        let mut data_0 = [0_u8; N];
+        rng.fill_bytes(&mut data_0);
+        let key_0 = PubKeyTransportCont::new(HorstPublicKey::new(&data_0), 2);
+
+        let sb = SigBlock {
+            data: payload.to_vec(),
+            signature: sig,
+            pub_keys: vec![key_0],
+            seq: 33,
+        };
+        let exp_sb = sb.clone();
+
+        // Serialize into network bytes
+        let bytes = sb.into_network_bytes();
+        let act_sb = SigBlock::from_network_bytes(bytes).unwrap();
+
+        assert_eq!(act_sb, exp_sb, "SignedBlock deserialization failed!");
     }
 }

@@ -50,7 +50,7 @@ cfg_if! {
     // *** PRODUCTION ***
     if #[cfg(not(feature = "debug"))] {
         /// Size of the hashes in a Merkle tree
-        const N: usize = 256 / 8;
+        const N: usize = 512 / 8;
         /// Number of SK segments in signature
         const K: usize = 32;
         /// Depth of the Merkle tree (without the root layer)
@@ -64,7 +64,7 @@ cfg_if! {
         // Hash fn for message hashing. msg: * -> N
         type MsgHashFn = Sha3_512;
         // Hash fn for tree & secret hashing. sk: 2N -> N & tree: N -> N
-        type TreeHashFn = Sha3_256;
+        type TreeHashFn = Sha3_512;
     }
     // *** DEBUG ***
     else {

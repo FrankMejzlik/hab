@@ -43,6 +43,6 @@ serde-big-array = "0.5"
 toml = "0.7"
 
 [features]
-default = ["debug"]
+default = []
 debug = []
 simulate_stdin = []

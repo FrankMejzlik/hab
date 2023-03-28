@@ -162,12 +162,12 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
             }
 
             if let Some(verif_result) = received {
-                debug!(tag: "delivery_queues","[{}][{}][{}] {}", verif_result.metadata.seq, verif_result.hash, verif_result.msg.len(), utils::sha2_256_str(&verif_result.msg));
+                debug!(tag: "delivery_queues","[{}][{}][{}] {}", verif_result.seq, verif_result.hash, verif_result.msg.len(), utils::sha2_256_str(&verif_result.msg));
 
                 return Ok(ReceivedBlock::new(
                     verif_result.msg,
                     verif_result.verification,
-                    verif_result.metadata,
+                    verif_result.seq,
                 ));
             }
             std::thread::sleep(Duration::from_millis(1));

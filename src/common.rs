@@ -74,7 +74,7 @@ impl fmt::Display for MsgVerification {
 #[derive(Debug)]
 pub struct VerifyResult {
     pub msg: Vec<u8>,
-    pub metadata: MsgMetadata,
+    pub seq: SeqNum,
     pub verification: MsgVerification,
     /// A hash computed as a combination of three parts (msg, signature, pubkeys).
     pub hash: MsgSignPubkeysChecksum,
@@ -82,13 +82,13 @@ pub struct VerifyResult {
 
 impl Ord for VerifyResult {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.metadata.seq.cmp(&other.metadata.seq).reverse()
+        self.seq.cmp(&other.seq).reverse()
     }
 }
 
 impl PartialOrd for VerifyResult {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.metadata.seq.cmp(&other.metadata.seq).reverse())
+        Some(self.seq.cmp(&other.seq).reverse())
     }
 }
 
@@ -96,7 +96,7 @@ impl Eq for VerifyResult {}
 
 impl PartialEq for VerifyResult {
     fn eq(&self, other: &Self) -> bool {
-        self.metadata.seq == other.metadata.seq
+        self.seq == other.seq
     }
 }
 
@@ -167,16 +167,12 @@ impl SenderIdentity {
 pub struct ReceivedBlock {
     pub data: Vec<u8>,
     pub sender: MsgVerification,
-    pub metadata: MsgMetadata,
+    pub seq: SeqNum,
 }
 
 impl ReceivedBlock {
-    pub fn new(data: Vec<u8>, sender: MsgVerification, metadata: MsgMetadata) -> Self {
-        ReceivedBlock {
-            data,
-            sender,
-            metadata,
-        }
+    pub fn new(data: Vec<u8>, sender: MsgVerification, seq: SeqNum) -> Self {
+        ReceivedBlock { data, sender, seq }
     }
 }
 

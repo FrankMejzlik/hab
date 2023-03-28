@@ -153,7 +153,7 @@ impl<const N: usize, const K: usize, const TAUPLUS: usize> IntoFromBytes
     for HorstSignature<N, K, TAUPLUS>
 {
     fn size() -> usize {
-        K * (TAUPLUS + 1) * N
+        K * TAUPLUS * N
     }
 
     fn into_network_bytes(self) -> Vec<u8> {
@@ -170,9 +170,6 @@ impl<const N: usize, const K: usize, const TAUPLUS: usize> IntoFromBytes
     where
         Self: Sized,
     {
-        println!("formula = {}", K * (TAUPLUS + 1) * N);
-        println!("bytes.len() = {}", bytes.len());
-
         // From `bytes` parse into multidimensional vectors as in `self.data`
         if bytes.len() != K * TAUPLUS * N {
             return Err(Error::new("Invalid signature size!"));

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 // ---
 // ---
-use crate::common::{BlockSignerParams, Error, MsgMetadata};
+use crate::common::{BlockSignerParams, Error};
 use crate::net_sender::{NetSender, NetSenderParams};
 use crate::traits::{BlockSignerTrait, IntoFromBytes, SenderTrait};
 #[allow(unused_imports)]
@@ -68,14 +68,6 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
             net_sender,
         }
     }
-
-    ///
-    /// Writes the additional data in the message and returns it along with the clean message.
-    ///
-    fn write_metadata(msg: &mut Vec<u8>, metadata: MsgMetadata) {
-        let seq_bytes = metadata.seq.to_le_bytes();
-        msg.extend_from_slice(&seq_bytes);
-    }
 }
 
 impl<BlockSigner: BlockSignerTrait> SenderTrait for Sender<BlockSigner> {
@@ -106,11 +98,10 @@ impl<BlockSigner: BlockSignerTrait> SenderTrait for Sender<BlockSigner> {
             }
 
             // Broadcast over the network
-            // let signed_msg_bytes =
-            //     bincode::serialize(&signed_msg).expect("Should be seriallizable.");
-
             let signed_msg_bytes = signed_msg.into_network_bytes();
-            //BlockSigner::SignedBlock::from_network_bytes(signed_msg_bytes).unwrap();
+            let _signed_msg_size = signed_msg_bytes.len();
+
+            info!(tag: "sender", "Broadcasting {_signed_msg_size} vs _msg_size: {_msg_size}, OH: {}", _signed_msg_size - _msg_size);
 
             if let Err(e) = self.net_sender.broadcast(&signed_msg_bytes) {
                 return Err(Error::new(&format!("{:?}", e)));
