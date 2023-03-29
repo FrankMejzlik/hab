@@ -2,6 +2,7 @@
 //! Module for broadcasting the signed data packets.
 //!
 
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fs::{create_dir_all, File};
@@ -9,7 +10,7 @@ use std::io::Cursor;
 use std::io::{Read, Write};
 use std::marker::PhantomData;
 use std::mem::size_of;
-use std::time::Duration;
+use std::sync::Arc;
 // ---
 use crate::common::BlockSignerParams;
 use crate::common::MsgVerification;
@@ -238,7 +239,7 @@ impl<Signature: Serialize + IntoFromBytes, PublicKey: Serialize + IntoFromBytes>
 #[derive(Serialize, Debug, Deserialize, PartialEq)]
 pub struct KeyLayers<const T: usize, const N: usize> {
     /// The key containers in their layers (indices).
-    data: Vec<Vec<KeyPairStoreCont<T, N>>>,
+    data: Vec<VecDeque<Arc<KeyPairStoreCont<T, N>>>>,
     /// List of seq number when the key layer can be used once again (default 0)
     ready_at: Vec<f64>,
     /// The average rate at which this layer signs.
@@ -263,7 +264,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
         avg_sign_rate: Vec<f64>,
     ) -> Self {
         KeyLayers {
-            data: vec![vec![]; depth],
+            data: vec![VecDeque::new(); depth],
             ready_at: vec![0.0; depth],
             avg_sign_rate,
             first_sign: true,
@@ -281,14 +282,14 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
     }
 
     fn insert(&mut self, level: usize, keypair: HorstKeypair<T, N>) {
-        let key_cont = KeyPairStoreCont {
+        let key_cont = Arc::new(KeyPairStoreCont {
             key: keypair,
             last_cerified: 0,
             lifetime: self.key_lifetime,
             cert_count: 0,
-        };
+        });
 
-        self.data[level].push(key_cont);
+        self.data[level].push_back(key_cont);
     }
 
     ///
@@ -299,26 +300,23 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
         &mut self,
         layer: usize,
     ) -> (
-        KeyPairStoreCont<T, N>,
+        Arc<KeyPairStoreCont<T, N>>,
         bool,
         Vec<PubKeyTransportCont<PublicKey<N>>>,
     ) {
-		let signing_idx = self.cert_window / 2;
+        let signing_idx = self.cert_window / 2;
         let resulting_key;
         {
-			let signing_key = &mut self.data[layer][signing_idx];
+            let signing_key = Arc::get_mut(&mut self.data[layer][signing_idx]).unwrap();
             signing_key.lifetime -= 1;
             signing_key.last_cerified = utils::unix_ts();
-			let start = utils::start();
-            resulting_key = signing_key.clone();
-			utils::stop("\t\t\tpoll(): copy key", start);
+            resulting_key = self.data[layer][signing_idx].clone();
         }
 
         let rate = self.avg_sign_rate[layer];
         if rate > 0.0 {
             self.ready_at[layer] += rate;
         }
-
 
         //
         // Determine what keys to certify with this key
@@ -339,16 +337,16 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
                     continue;
                 }
                 pks.push(PubKeyTransportCont::new(k.key.public.clone(), l_idx as u8));
-                k.cert_count += 1;
+                Arc::get_mut(k).unwrap().cert_count += 1;
             }
         }
 
         // If this key just died
         let died = if (resulting_key.lifetime) == 0 {
             // Remove it
-			let start = utils::start();
-            self.data[layer].remove(0);
-			utils::stop("\t\t\tpoll(): copy key", start);
+            let start = utils::start();
+            self.data[layer].pop_front();
+            utils::stop("\t\t\tpoll(): pop_front", start);
             // And indicate that we need a new one
             true
         } else {
@@ -527,12 +525,12 @@ impl<
     fn next_key(
         &mut self,
     ) -> (
-        SecretKey<T, TREE_HASH_SIZE>,
+        Arc<KeyPairStoreCont<T, TREE_HASH_SIZE>>,
         Vec<PubKeyTransportCont<PublicKey<TREE_HASH_SIZE>>>,
     ) {
         // TODO: Use key pauses
 
-		let start = utils::start();
+        let start = utils::start();
         // Sample what layer to use
         let mut sign_layer;
         loop {
@@ -548,27 +546,24 @@ impl<
             }
         }
         debug!(tag:"sender", "Signing with key from the layer {sign_layer}...");
-		utils::stop("\t\t\tnext_key(): sampling", start);
+        utils::stop("\t\t\tnext_key(): sampling", start);
 
-		let start = utils::start();
+        let start = utils::start();
         // Poll the key
         let (signing_key, died, pks) = self.layers.poll(sign_layer);
-		utils::stop("\t\t\tnext_key(): poll", start);
+        utils::stop("\t\t\tnext_key(): poll", start);
 
-		let start = utils::start();
-		let new_key = <Self as BlockSignerTrait>::Signer::gen_key_pair(&mut self.rng);
-		utils::stop("\t\t\tnext_key(): gen", start);
-		let start = utils::start();
+        let start = utils::start();
+        let new_key = <Self as BlockSignerTrait>::Signer::gen_key_pair(&mut self.rng);
+        utils::stop("\t\t\tnext_key(): gen", start);
+        let start = utils::start();
         // If needed generate a new key for the given layer
         if died {
-            self.layers.insert(
-                sign_layer,
-                new_key,
-            );
+            self.layers.insert(sign_layer, new_key);
         }
-		utils::stop("\t\t\tnext_key(): insert", start);
+        utils::stop("\t\t\tnext_key(): insert", start);
 
-        (signing_key.key.secret, pks)
+        (signing_key, pks)
     }
 }
 
@@ -671,7 +666,7 @@ impl<
         let (sk, pub_keys) = self.next_key();
         utils::stop("\t\tBlockSigner::next_key()", start);
 
-		let start = utils::start();
+        let start = utils::start();
         // Prepare the data to sign in the correct order
         let mut data_to_sign = Cursor::new(vec![]);
         // Write `seq` as a big-endian u64
@@ -692,12 +687,12 @@ impl<
         data_to_sign.write_all(&data).unwrap();
         let data_to_sign = data_to_sign.into_inner();
 
-		utils::stop("\t\tBlockSigner::prep to_sign", start);
-		let start = utils::start();
+        utils::stop("\t\tBlockSigner::prep to_sign", start);
+        let start = utils::start();
 
-        let signature = Self::Signer::sign(&data_to_sign, &sk);
+        let signature = Self::Signer::sign(&data_to_sign, &sk.key.secret);
         debug!(tag: "block_signer", "{}", self.dump_layers());
-		utils::stop("\t\tBlockSigner::sign()", start);
+        utils::stop("\t\tBlockSigner::sign()", start);
 
         #[cfg(feature = "store_state")]
         self.store_state();

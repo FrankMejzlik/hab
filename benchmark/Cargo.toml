@@ -39,7 +39,6 @@ ctrlc = "3.2"
 rand = "0.8"
 lazy_static = "1.4"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
-serde-big-array = "0.5"
 toml = "0.7"
 
 [features]
