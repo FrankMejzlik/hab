@@ -41,7 +41,9 @@ lazy_static = "1.4"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 toml = "0.7"
 
+
 [features]
-default = []
+default = ["debug"]
 debug = []
 simulate_stdin = []
+

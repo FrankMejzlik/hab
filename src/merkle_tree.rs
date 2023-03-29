@@ -8,6 +8,8 @@ use std::fmt::{Display, Formatter, Result};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
+
+use crate::utils;
 // ---
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -19,7 +21,7 @@ pub struct MerkleTree<const BLOCK_SIZE: usize> {
 }
 
 impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
-    pub fn new<Hash: Digest>(leaves: Vec<Vec<u8>>) -> Self {
+    pub fn new<Hash: Digest>(leaves: &Vec<Vec<u8>>) -> Self {
         let t = leaves.len();
         let h = (t as f32).log2();
 
@@ -33,18 +35,21 @@ impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
 
         // Overflow check
         assert!(h <= std::u32::MAX as usize);
-
+        let start = utils::start();
         let size = 2_usize.pow(h as u32) - 1;
         let mut data = vec![vec![0u8; BLOCK_SIZE]; size];
+        utils::stop("\t\t\t\t\ttree(): alloc", start);
 
         let base = 2_usize.pow((h - 1) as u32) - 1;
-
+        let start = utils::start();
         // Hash the SK for the tree leaves
-        for (i, d) in leaves.into_iter().enumerate() {
+        for (i, d) in leaves.iter().enumerate() {
             let hash = Hash::digest(d);
             data[base + i].copy_from_slice(&hash[..BLOCK_SIZE])
         }
+        utils::stop("\t\t\t\t\ttree(): hash leaves", start);
 
+        let start = utils::start();
         let mut t = MerkleTree { data, t, h, size };
 
         for l in (0_u32..(h - 1) as u32).rev() {
@@ -60,6 +65,7 @@ impl<const BLOCK_SIZE: usize> MerkleTree<BLOCK_SIZE> {
                 t.data[base + i].copy_from_slice(&r[..BLOCK_SIZE]);
             }
         }
+        utils::stop("\t\t\t\t\ttree(): build tree", start);
 
         t
     }

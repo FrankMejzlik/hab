@@ -180,12 +180,13 @@ pub fn start() -> SystemTime {
     std::time::SystemTime::now()
 }
 
-pub fn stop(scope: &str, start: SystemTime) {
+pub fn stop(_scope: &str, _start: SystemTime) {
+    #[cfg(feature = "print_times")]
     println!(
         "{}: {} ms",
-        scope,
+        _scope,
         std::time::SystemTime::now()
-            .duration_since(start)
+            .duration_since(_start)
             .unwrap()
             .as_millis()
     );

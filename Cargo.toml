@@ -28,10 +28,12 @@ lazy_static = "1.4"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 serde-big-array = "0.5"
 petgraph = { version = "0.6", features=["serde-1"] }
+rayon = "1.5.1"
 
 [features]
-default = []
+default = ["debug"]
 debug = []
+print_times = []
 log_input_output = []
 simulate_out_of_order = []
 simulate_fake_msgs = []

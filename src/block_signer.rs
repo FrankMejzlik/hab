@@ -19,6 +19,7 @@ use crate::common::VerifyResult;
 use crate::constants;
 use crate::log_graph;
 use crate::traits::IntoFromBytes;
+use crate::traits::KeyPair;
 use bincode::{deserialize, serialize};
 use byteorder::BigEndian;
 use byteorder::LittleEndian;
@@ -522,6 +523,12 @@ impl<
         })
     }
 
+    fn new_keypair(
+        &mut self,
+    ) -> KeyPair<<Self as BlockSignerTrait>::SecretKey, <Self as BlockSignerTrait>::PublicKey> {
+        <Self as BlockSignerTrait>::Signer::gen_key_pair(&mut self.rng)
+    }
+
     fn next_key(
         &mut self,
     ) -> (
@@ -553,15 +560,13 @@ impl<
         let (signing_key, died, pks) = self.layers.poll(sign_layer);
         utils::stop("\t\t\tnext_key(): poll", start);
 
-        let start = utils::start();
-        let new_key = <Self as BlockSignerTrait>::Signer::gen_key_pair(&mut self.rng);
-        utils::stop("\t\t\tnext_key(): gen", start);
-        let start = utils::start();
         // If needed generate a new key for the given layer
         if died {
+            let start = utils::start();
+            let new_key = self.new_keypair();
+            utils::stop("\t\t\tnext_key(): gen", start);
             self.layers.insert(sign_layer, new_key);
         }
-        utils::stop("\t\t\tnext_key(): insert", start);
 
         (signing_key, pks)
     }

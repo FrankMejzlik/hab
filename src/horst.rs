@@ -62,17 +62,30 @@ pub struct HorstSecretKey<const T: usize, const TREE_HASH_SIZE: usize> {
 }
 impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SIZE> {
     fn new<TreeHash: Digest, CsPrng: CryptoRng + SeedableRng + RngCore>(rng: &mut CsPrng) -> Self {
-        // Allocate the memory
-        let mut data = vec![vec![0u8; TREE_HASH_SIZE]; T];
+        let start = utils::start();
 
+        // Allocate the memory
+        let mut data = vec![
+            unsafe {
+                let mut v = Vec::with_capacity(TREE_HASH_SIZE);
+                v.set_len(TREE_HASH_SIZE);
+                v
+            };
+            T
+        ];
+
+        utils::stop("\t\t\t\tSK(): alloc", start);
+        let start = utils::start();
         // Generate the key
         for block in data.iter_mut() {
             rng.fill_bytes(block);
-            // debug!("{}", utils::to_hex(block));
         }
+        utils::stop("\t\t\t\tnext_key(): gen", start);
 
         // Pregenerate the tree
-        let tree = Box::new(MerkleTree::new::<TreeHash>(data.clone()));
+        let start = utils::start();
+        let tree = Box::new(MerkleTree::new::<TreeHash>(&data));
+        utils::stop("\t\t\t\tSK(): tree", start);
 
         HorstSecretKey { data, tree }
     }
