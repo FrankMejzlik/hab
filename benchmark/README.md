@@ -1,5 +1,23 @@
 # HAB benchmarking
 
+## Key distributions
+
+```sh
+# Skip-exponential
+let key_dist = vec![
+ vec![65536, 100],
+ vec![16384, 0],
+ vec![8192, 0],
+ vec![4096, 0],
+ vec![1024, 0],
+ vec![256, 0],
+ vec![64, 0],
+ vec![16, 0],
+ vec![4, 0],
+ vec![1, 0],
+];
+```
+
 ### Sender
 
 #### **Supported logs:**

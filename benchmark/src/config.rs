@@ -68,12 +68,12 @@ cfg_if! {
     }
     // *** DEBUG ***
     else {
-        use sha3::{Sha3_256, Sha3_512};
+        use sha3::{Sha3_256};
 
         /// Size of the hashes in a Merkle tree
         const N: usize = 256 / 8;
         /// Number of SK segments in signature
-        const K: usize = 8;
+        const K: usize = 64;
         /// Depth of the Merkle tree (without the root layer)
         const TAU: usize = 4;
 
@@ -83,7 +83,7 @@ cfg_if! {
 
         // --- Hash functions ---
         // Hash fn for message hashing. msg: * -> N
-        type MsgHashFn = Sha3_512;
+        type MsgHashFn = Sha3_256;
         // Hash fn for tree & secret hashing. sk: 2N -> N & tree: N -> N
         type TreeHashFn = Sha3_256;
     }

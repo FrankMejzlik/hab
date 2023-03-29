@@ -9,6 +9,7 @@ use std::io::Cursor;
 use std::io::{Read, Write};
 use std::marker::PhantomData;
 use std::mem::size_of;
+use std::time::Duration;
 // ---
 use crate::common::BlockSignerParams;
 use crate::common::MsgVerification;
@@ -302,19 +303,22 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
         bool,
         Vec<PubKeyTransportCont<PublicKey<N>>>,
     ) {
-        let signing_idx = self.cert_window / 2;
+		let signing_idx = self.cert_window / 2;
         let resulting_key;
         {
-            let signing_key = &mut self.data[layer][signing_idx];
+			let signing_key = &mut self.data[layer][signing_idx];
             signing_key.lifetime -= 1;
             signing_key.last_cerified = utils::unix_ts();
+			let start = utils::start();
             resulting_key = signing_key.clone();
+			utils::stop("\t\t\tpoll(): copy key", start);
         }
 
         let rate = self.avg_sign_rate[layer];
         if rate > 0.0 {
             self.ready_at[layer] += rate;
         }
+
 
         //
         // Determine what keys to certify with this key
@@ -342,7 +346,9 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
         // If this key just died
         let died = if (resulting_key.lifetime) == 0 {
             // Remove it
+			let start = utils::start();
             self.data[layer].remove(0);
+			utils::stop("\t\t\tpoll(): copy key", start);
             // And indicate that we need a new one
             true
         } else {
@@ -526,6 +532,7 @@ impl<
     ) {
         // TODO: Use key pauses
 
+		let start = utils::start();
         // Sample what layer to use
         let mut sign_layer;
         loop {
@@ -541,17 +548,25 @@ impl<
             }
         }
         debug!(tag:"sender", "Signing with key from the layer {sign_layer}...");
+		utils::stop("\t\t\tnext_key(): sampling", start);
 
+		let start = utils::start();
         // Poll the key
         let (signing_key, died, pks) = self.layers.poll(sign_layer);
+		utils::stop("\t\t\tnext_key(): poll", start);
 
+		let start = utils::start();
+		let new_key = <Self as BlockSignerTrait>::Signer::gen_key_pair(&mut self.rng);
+		utils::stop("\t\t\tnext_key(): gen", start);
+		let start = utils::start();
         // If needed generate a new key for the given layer
         if died {
             self.layers.insert(
                 sign_layer,
-                <Self as BlockSignerTrait>::Signer::gen_key_pair(&mut self.rng),
+                new_key,
             );
         }
+		utils::stop("\t\t\tnext_key(): insert", start);
 
         (signing_key.key.secret, pks)
     }
@@ -652,10 +667,11 @@ impl<
     }
 
     fn sign(&mut self, data: Vec<u8>, seq: SeqNum) -> Result<Self::SignedBlock, Error> {
-        //let start = utils::start();
+        let start = utils::start();
         let (sk, pub_keys) = self.next_key();
-        //utils::stop("\t\tBlockSigner::next_key()", start);
+        utils::stop("\t\tBlockSigner::next_key()", start);
 
+		let start = utils::start();
         // Prepare the data to sign in the correct order
         let mut data_to_sign = Cursor::new(vec![]);
         // Write `seq` as a big-endian u64
@@ -676,8 +692,12 @@ impl<
         data_to_sign.write_all(&data).unwrap();
         let data_to_sign = data_to_sign.into_inner();
 
+		utils::stop("\t\tBlockSigner::prep to_sign", start);
+		let start = utils::start();
+
         let signature = Self::Signer::sign(&data_to_sign, &sk);
         debug!(tag: "block_signer", "{}", self.dump_layers());
+		utils::stop("\t\tBlockSigner::sign()", start);
 
         #[cfg(feature = "store_state")]
         self.store_state();
