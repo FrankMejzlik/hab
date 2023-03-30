@@ -6,7 +6,6 @@
 use cfg_if::cfg_if;
 use clap::Parser;
 use rand_chacha::ChaCha20Rng;
-use sha3::Sha3_512;
 // ---
 use hab::utils;
 use hab::BlockSigner;
@@ -49,6 +48,8 @@ pub const SIM_INPUT_PERIOD: Option<Duration> = None;
 cfg_if! {
     // *** PRODUCTION ***
     if #[cfg(not(feature = "debug"))] {
+		use sha3::{Sha3_512};
+
         /// Size of the hashes in a Merkle tree
         const N: usize = 512 / 8;
         /// Number of SK segments in signature

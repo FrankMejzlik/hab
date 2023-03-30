@@ -56,113 +56,121 @@ impl Benchmarker {
             vec![4, 0],
             vec![1, 0],
         ];
-        let key_lifetime = 1;
         let pre_cert = 1;
 
         const REPS: usize = 200;
-        let NUMS_MISSED  : Vec<usize> = (1..=200).collect();
+        let key_lifetimes = vec![2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let mut nums_mised: Vec<usize> = (1..=10).collect();
+        let mut next: Vec<usize> = (10..=100).step_by(2).collect();
+        let mut next2: Vec<usize> = (100..=200).step_by(5).collect();
+        nums_mised.append(&mut next);
+        nums_mised.append(&mut next2);
+
         const MAX_REAUTH_ITER: usize = 500;
 
         let message = b"hello".to_vec();
 
-        // Open TSV file for writing per-line
-        let file = std::fs::File::create("reauth_time.tsv").unwrap();
-        let mut writer = BufWriter::new(file);
-        writeln!(
-            writer,
-            "key_selection\tkey_lifetime\tPC\tnum_received\tnum_missed\tnum_to_reauth"
-        )
-        .unwrap();
+        for key_lifetime in key_lifetimes.iter() {
+            // Open TSV file for writing per-line
+            let file = std::fs::File::create(format!("reauth_time__{key_selection_name}__{key_lifetime}.tsv")).unwrap();
+            let mut writer = BufWriter::new(file);
+            writeln!(
+                writer,
+                "key_selection\tkey_lifetime\tPC\tnum_received\tnum_missed\tnum_to_reauth"
+            )
+            .unwrap();
 
-        // Seed an RNG with 42
-        let mut seed_rng = rand::rngs::StdRng::seed_from_u64(seed_seed);
+            // Seed an RNG with 42
+            let mut seed_rng = rand::rngs::StdRng::seed_from_u64(seed_seed);
 
-        for num_miss in NUMS_MISSED {
-            let num_received = num_miss * 2;
-            let mut ress = vec![];
-            for _ in 0..REPS {
-                // Sample from `seed_rng` to get a new seed
-                let seed = seed_rng.gen::<u64>();
+            for num_miss in nums_mised.iter() {
+                let num_received = num_miss * 2;
+                let mut ress = vec![];
+                for _ in 0..REPS {
+                    // Sample from `seed_rng` to get a new seed
+                    let seed = seed_rng.gen::<u64>();
 
-                // Remove identity file
-                let _ = std::fs::remove_file(format!("{}/.identity_sender_01", id_dir.clone()));
-                let _ = std::fs::remove_file(format!("{}/.identity_receiver_01", id_dir.clone()));
+                    // Remove identity file
+                    let _ = std::fs::remove_file(format!("{}/.identity_sender_01", id_dir.clone()));
+                    let _ =
+                        std::fs::remove_file(format!("{}/.identity_receiver_01", id_dir.clone()));
 
-                let (sender_output, receiver_input) = channel();
+                    let (sender_output, receiver_input) = channel();
 
-                let mut receiver: Receiver<BlockSignerInst> = Receiver::new(ReceiverParams {
-                    running: running.clone(),
-                    target_addr: target_addr.clone(),
-                    target_name: target_name.clone(),
-                    id_dir: id_dir.clone(),
-                    id_filename: ".identity_receiver_01".to_string(),
-                    datagram_size: datagram_size,
-                    net_buffer_size: net_buffer_size,
-                    key_lifetime: key_lifetime,
-                    cert_interval: pre_cert,
-                    delivery_deadline: max_delivery_deadline,
-                    alt_input: Some(receiver_input),
-                });
+                    let mut receiver: Receiver<BlockSignerInst> = Receiver::new(ReceiverParams {
+                        running: running.clone(),
+                        target_addr: target_addr.clone(),
+                        target_name: target_name.clone(),
+                        id_dir: id_dir.clone(),
+                        id_filename: ".identity_receiver_01".to_string(),
+                        datagram_size: datagram_size,
+                        net_buffer_size: net_buffer_size,
+                        key_lifetime: *key_lifetime,
+                        cert_interval: pre_cert,
+                        delivery_deadline: max_delivery_deadline,
+                        alt_input: Some(receiver_input),
+                    });
 
-                let mut sender: Sender<BlockSignerInst> = Sender::new(SenderParams {
-                    addr: sender_addr.clone(),
-                    running: running.clone(),
-                    seed: seed,
-                    id_dir: id_dir.clone(),
-                    id_filename: ".identity_sender_01".to_string(),
-                    datagram_size: datagram_size,
-                    net_buffer_size: net_buffer_size,
-                    subscriber_lifetime: subscriber_lifetime,
-                    key_lifetime: key_lifetime,
-                    cert_interval: pre_cert,
-                    max_piece_size: max_piece_size,
-                    key_dist: key_dist.clone(),
-                    alt_output: Some(sender_output),
-                });
+                    let mut sender: Sender<BlockSignerInst> = Sender::new(SenderParams {
+                        addr: sender_addr.clone(),
+                        running: running.clone(),
+                        seed: seed,
+                        id_dir: id_dir.clone(),
+                        id_filename: ".identity_sender_01".to_string(),
+                        datagram_size: datagram_size,
+                        net_buffer_size: net_buffer_size,
+                        subscriber_lifetime: subscriber_lifetime,
+                        key_lifetime: *key_lifetime,
+                        cert_interval: pre_cert,
+                        max_piece_size: max_piece_size,
+                        key_dist: key_dist.clone(),
+                        alt_output: Some(sender_output),
+                    });
 
-                //
-                // Receive `num_rec` messages
-                //
-                for _ in 0..num_received {
-                    sender.broadcast(message.clone()).unwrap();
-                    let received_data = receiver.receive().unwrap();
+                    //
+                    // Receive `num_rec` messages
+                    //
+                    for _ in 0..num_received {
+                        sender.broadcast(message.clone()).unwrap();
+                        let received_data = receiver.receive().unwrap();
 
-                    assert_eq!(
-                        message, received_data.data,
-                        "The received message is incorrect!"
-                    );
-                }
-
-                //
-                // Miss `num_miss` messages
-                //
-                receiver.ignore_next(num_miss);
-                for _ in 0..num_miss {
-                    sender.broadcast(message.clone()).unwrap();
-                }
-
-                //
-                // Count when re-auth happens
-                //
-                let mut reauth_count = MAX_REAUTH_ITER;
-                for reauth_i in 0..MAX_REAUTH_ITER {
-                    sender.broadcast(message.clone()).unwrap();
-                    let received_data = receiver.receive().unwrap();
-
-                    if let MsgVerification::Verified(_) = received_data.sender {
-                        reauth_count = reauth_i;
-                        break;
+                        assert_eq!(
+                            message, received_data.data,
+                            "The received message is incorrect!"
+                        );
                     }
+
+                    //
+                    // Miss `num_miss` messages
+                    //
+                    receiver.ignore_next(*num_miss);
+                    for _ in 0..*num_miss {
+                        sender.broadcast(message.clone()).unwrap();
+                    }
+
+                    //
+                    // Count when re-auth happens
+                    //
+                    let mut reauth_count = MAX_REAUTH_ITER;
+                    for reauth_i in 0..MAX_REAUTH_ITER {
+                        sender.broadcast(message.clone()).unwrap();
+                        let received_data = receiver.receive().unwrap();
+
+                        if let MsgVerification::Verified(_) = received_data.sender {
+                            reauth_count = reauth_i;
+                            break;
+                        }
+                    }
+                    let re_auth_at = reauth_count + 1;
+                    ress.push(re_auth_at);
+                    writeln!(writer, "{key_selection_name}\t{key_lifetime}\t{pre_cert}\t{num_received}\t{num_miss}\t{re_auth_at}").unwrap();
                 }
-                let re_auth_at = reauth_count + 1;
-                ress.push(re_auth_at);
-                writeln!(writer, "{key_selection_name}\t{key_lifetime}\t{pre_cert}\t{num_received}\t{num_miss}\t{re_auth_at}").unwrap();
+                println!(
+                    "num_rec: {}; num_miss: {}; reauth_i: {:?}",
+                    num_received, num_miss, ress
+                );
             }
-            println!(
-                "num_rec: {}; num_miss: {}; reauth_i: {:?}",
-                num_received, num_miss, ress
-            );
+            writer.flush().unwrap()
         }
-        writer.flush().unwrap()
     }
 }
