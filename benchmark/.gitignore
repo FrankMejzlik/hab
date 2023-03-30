@@ -10,3 +10,5 @@ env/sender/*
 env/receiver/*
 !env/receiver/.phony
 tests/env/
+plots/*
+!plots/plot-re-auth-time.R
