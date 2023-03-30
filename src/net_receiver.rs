@@ -35,14 +35,25 @@ use crate::{debug, error, info, trace, warn};
 /// | fragment_id (8B)| offset (31b)| more (1b) | payload (up to max datagram size - 8B) |
 /// +-----------------+-------------+-----------+----------------------------------------+
 ///
-pub fn parse_fragment(data: &[u8]) -> Fragment {
+pub fn parse_fragment(data: &[u8]) -> Result<Fragment, Error> {
     let mut data_cursor = Cursor::new(data);
 
     // Read fragment ID
-    let fragment_id = data_cursor.read_u64::<BigEndian>().unwrap();
+    let fragment_id = match data_cursor.read_u64::<BigEndian>() {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(Error::new("Failed to read fragment ID!"));
+        }
+    };
+
     // Read Offet + more bit
     let mut offset_more = [0; size_of::<FragmentOffset>()];
-    _ = data_cursor.read_exact(&mut offset_more);
+    match data_cursor.read_exact(&mut offset_more) {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(Error::new("Failed to read offset + more bit"));
+        }
+    };
 
     // Parse the more flag from the last bit
     let more = offset_more[0] & 0b10000000 > 0;
@@ -55,12 +66,12 @@ pub fn parse_fragment(data: &[u8]) -> Fragment {
     let mut data = vec![];
     data_cursor.read_to_end(&mut data).unwrap();
 
-    Fragment {
+    Ok(Fragment {
         id: fragment_id,
         offset,
         more,
         payload: data,
-    }
+    })
 }
 
 #[derive(Debug)]
@@ -139,7 +150,10 @@ impl FragmentedBlocks {
     /// Inserts the new fragment into the partialy received block.
     ///
     pub fn insert(&mut self, fragment: &[u8]) -> Option<Vec<u8>> {
-        let fragment = parse_fragment(fragment);
+        let fragment = match parse_fragment(fragment) {
+            Ok(x) => x,
+            Err(_) => return None,
+        };
         let fragment_id = fragment.id;
 
         // If a new hash has came in, create a new record
@@ -234,8 +248,12 @@ impl NetReceiver {
                 }
                 // Else use network as a source
                 else {
+					info!(tag: "receiver", "Blocking on {}", socket.local_addr().unwrap());
                     match socket.recv_from(&mut buf) {
-                        Ok(x) => x.0,
+                        Ok(x) => {
+							info!(tag: "receiver", "Received {} bytes from '{}'", x.0, x.1);
+							x.0
+						},
                         Err(e) => {
                             warn!(tag: "receiver", "Failed to receive the datagram! ERROR: {}!",e);
                             0
@@ -281,14 +299,14 @@ impl NetReceiver {
         };
 
         info!(tag: "heartbeat_task", "Subscribing to the sender at '{addr}'....");
-        if recv_sock.connect(addr).is_err() {
-            panic!("Failed to set source addr '{}'!", addr);
-        }
+        // if recv_sock.connect(addr).is_err() {
+        //     panic!("Failed to set source addr '{}'!", addr);
+        // }
 
         // The task loop
         while running.load(Ordering::Acquire) {
             debug!(tag: "heartbeat_task", "Sending a heartbeat to the sender at '{addr}'...");
-            match recv_sock.send(&42_u8.to_be_bytes()) {
+            match recv_sock.send_to(&42_u8.to_be_bytes(), addr) {
                 Ok(_) => (),
                 Err(e) => warn!("Failed to send a heartbeat to '{addr}'! ERROR: {e}"),
             };
