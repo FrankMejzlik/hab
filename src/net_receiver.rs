@@ -24,7 +24,7 @@ use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 // ---
 use crate::buffer_tracker::BufferTracker;
-use crate::common::{Error, Fragment, FragmentId, FragmentOffset, PortNumber};
+use crate::common::{Error, Fragment, FragmentId, FragmentOffset};
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
@@ -195,13 +195,9 @@ impl NetReceiver {
 
         // Bind on some available port
         let socket = match UdpSocket::bind("0.0.0.0:0") {
-            Ok(x) => x,
+            Ok(x) => Arc::new(x),
             Err(e) => panic!("Failed to bind to the receiver socket! ERROR: {}", e),
         };
-        let socket_port = socket
-            .local_addr()
-            .expect("Should have local address!")
-            .port();
 
         info!(tag: "receiver", "The receiver thread is bound at '{}'...", socket.local_addr().unwrap());
 
@@ -209,7 +205,7 @@ impl NetReceiver {
         rt.spawn(Self::heartbeat_task(
             params.addr.clone(),
             params.running.clone(),
-            socket_port,
+            socket.clone(),
         ));
 
         // Create a channel
@@ -278,25 +274,21 @@ impl NetReceiver {
         }
     }
 
-    async fn heartbeat_task(addr: String, running: Arc<AtomicBool>, recv_port: PortNumber) {
+    async fn heartbeat_task(addr: String, running: Arc<AtomicBool>, recv_sock: Arc<UdpSocket>) {
         let addr = match SocketAddrV4::from_str(&addr) {
             Ok(x) => x,
             Err(e) => panic!("Failed to parse the address '{addr}! ERROR: {e}'"),
         };
-        let socket = match UdpSocket::bind("0.0.0.0:0") {
-            Ok(x) => x,
-            Err(e) => panic!("Failed to bind to the heartbeat socket! ERROR: {}", e),
-        };
 
-        if socket.connect(addr).is_err() {
-            panic!("Failed to connect to '{addr}'!");
-        }
         info!(tag: "heartbeat_task", "Subscribing to the sender at '{addr}'....");
+        if recv_sock.connect(addr).is_err() {
+            panic!("Failed to set source addr '{}'!", addr);
+        }
 
         // The task loop
         while running.load(Ordering::Acquire) {
             debug!(tag: "heartbeat_task", "Sending a heartbeat to the sender at '{addr}'...");
-            match socket.send(&recv_port.to_le_bytes()) {
+            match recv_sock.send(&42_u8.to_be_bytes()) {
                 Ok(_) => (),
                 Err(e) => warn!("Failed to send a heartbeat to '{addr}'! ERROR: {e}"),
             };

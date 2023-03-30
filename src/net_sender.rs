@@ -297,15 +297,17 @@ impl NetSender {
                 }
             };
             // We expect 2 byte port as a payload
-            if recv != 2 {
-                warn!("Incorect heartbeat received from '{peer}'!");
+            if recv != 1 {
+                warn!(tag: "registrator_task", "Incorect heartbeat received from '{peer}'! Received {recv} B.");
                 continue;
             }
 
             // Read the port that the receiver will listen for the data
-            let mut two_bytes = [0; 2];
-            two_bytes.copy_from_slice(&buf[..2]);
-            let recv_port = u16::from_le_bytes(two_bytes);
+            let mut byte = [0; 1];
+            byte.copy_from_slice(&buf[..1]);
+            let _magic = u8::from_be_bytes(byte);
+
+			let recv_port = peer.port();
             let recv_socket = SocketAddr::new(peer.ip(), recv_port);
 
             // Insert/update this subscriber

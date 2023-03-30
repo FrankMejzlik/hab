@@ -12,3 +12,4 @@ env/receiver/*
 tests/env/
 plots/*
 !plots/plot-re-auth-time.R
+*.tsv
