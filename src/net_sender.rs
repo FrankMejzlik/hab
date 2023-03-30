@@ -6,8 +6,7 @@ use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::io::Read;
 use std::io::Write;
-use std::net::{SocketAddr, SocketAddrV4};
-use std::str::FromStr;
+use std::net::{SocketAddr};
 use std::sync::mpsc::Sender;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -53,7 +52,7 @@ pub struct NetSender {
     params: NetSenderParams,
     rt: Runtime,
     /// A socked used for sending the data to the subscribers.
-    sender_socket: UdpSocket,
+    sender_socket: Arc<UdpSocket>,
     /// A table of the subscribed receivers with the UNIX timestamp of the current lifetime.
     subscribers: Subscribers,
     // ---
@@ -67,20 +66,20 @@ impl NetSender {
 
         let subscribers = Subscribers::new();
 
+        // Spawn the sender UDP socket
+        let sender_socket = match rt.block_on(UdpSocket::bind(params.addr.clone())) {
+            Ok(x) => Arc::new(x),
+            Err(e) => panic!("Failed to bind to the sender socket! ERROR: {}", e),
+        };
+
         // Spawn the task that will accept the receiver heartbeats
         rt.spawn(Self::registrator_task(
-            params.addr.clone(),
+            sender_socket.clone(),
             params.running.clone(),
             subscribers.clone(),
             params.subscriber_lifetime.as_millis(),
             params.net_buffer_size,
         ));
-
-        // Spawn the sender UDP socket
-        let sender_socket = match rt.block_on(UdpSocket::bind("0.0.0.0:0")) {
-            Ok(x) => x,
-            Err(e) => panic!("Failed to bind to the sender socket! ERROR: {}", e),
-        };
 
         NetSender {
             params,
@@ -271,21 +270,13 @@ impl NetSender {
     }
 
     async fn registrator_task(
-        addr: String,
+        socket: Arc<UdpSocket>,
         running: Arc<AtomicBool>,
         mut subs: Subscribers,
         lifetime: UnixTimestamp,
         buffer_size: usize,
     ) {
-        let addr = match SocketAddrV4::from_str(&addr) {
-            Ok(x) => x,
-            Err(e) => panic!("Failed to parse the address '{addr}! ERROR: {e}'"),
-        };
-        let socket = match UdpSocket::bind(&addr).await {
-            Ok(x) => x,
-            Err(e) => panic!("Failed to bind to socket! ERROR: {}", e),
-        };
-        info!(tag: "registrator_task", "Accepting heartbeats from receivers at {addr}...");
+        info!(tag: "registrator_task", "Accepting heartbeats from receivers at {}...", socket.local_addr().unwrap());
 
         while running.load(Ordering::Acquire) {
             let mut buf = vec![0; buffer_size];
@@ -307,7 +298,7 @@ impl NetSender {
             byte.copy_from_slice(&buf[..1]);
             let _magic = u8::from_be_bytes(byte);
 
-			let recv_port = peer.port();
+            let recv_port = peer.port();
             let recv_socket = SocketAddr::new(peer.ip(), recv_port);
 
             // Insert/update this subscriber
