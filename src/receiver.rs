@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::sync::mpsc;
 // ---
 // ---
 use crate::common::{BlockSignerParams, Error, ReceivedBlock, SenderIdentity, SeqNum};
@@ -19,18 +20,15 @@ use crate::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
 pub struct ReceiverParams {
+    pub id_filename: String,
+    pub delivery_delay: Duration,
+	pub is_distributor: bool,
+	// ---
     pub target_addr: String,
     pub target_name: String,
-    pub running: Arc<AtomicBool>,
-    pub id_dir: String,
-    pub id_filename: String,
-    pub datagram_size: usize,
-    pub net_buffer_size: usize,
-    pub key_lifetime: usize,
-    pub cert_interval: usize,
-    pub delivery_deadline: Duration,
+	pub running: Arc<AtomicBool>,
     /// An alternative output destination instread of network.
-    pub alt_input: Option<std::sync::mpsc::Receiver<Vec<u8>>>,
+    pub alt_input: Option<mpsc::Receiver<Vec<u8>>>,
 }
 
 pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'static> {
@@ -47,12 +45,11 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
     pub fn new(mut params: ReceiverParams) -> Self {
         let block_signer_params = BlockSignerParams {
             seed: 0,
-            id_dir: params.id_dir.clone(),
             id_filename: params.id_filename.clone(),
             target_petname: params.target_name.clone(),
-            key_lifetime: params.key_lifetime,
-            cert_interval: params.cert_interval,
-            max_piece_size: 0,
+            pre_cert: None,
+            max_piece_size: 0, //< Not used
+			key_lifetime: 0, //< Not used
             key_dist: vec![], //< Not used
         };
         let verifier = Arc::new(Mutex::new(BlockVerifier::new(block_signer_params)));
@@ -60,8 +57,6 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
         let net_recv_params = NetReceiverParams {
             addr: params.target_addr.clone(),
             running: params.running.clone(),
-            datagram_size: params.datagram_size,
-            net_buffer_size: params.net_buffer_size,
             alt_input: params.alt_input.take(),
         };
 
@@ -69,7 +64,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
         let verifier_clone = verifier.clone();
 
         let delivery = Arc::new(Mutex::new(DeliveryQueues::new(DeliveryQueuesParams {
-            deadline: params.delivery_deadline,
+            deadline: params.delivery_delay,
         })));
         let delivery_clone = delivery.clone();
 

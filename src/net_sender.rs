@@ -36,7 +36,6 @@ pub struct NetSenderParams {
     pub running: Arc<AtomicBool>,
     pub datagram_size: usize,
     pub subscriber_lifetime: Duration,
-    pub net_buffer_size: usize,
     pub max_piece_size: usize,
     /// An alternative output destination instread of network.
     pub alt_output: Option<Sender<Vec<u8>>>,
@@ -78,7 +77,7 @@ impl NetSender {
             params.running.clone(),
             subscribers.clone(),
             params.subscriber_lifetime.as_millis(),
-            params.net_buffer_size,
+            params.datagram_size*2,
         ));
 
         NetSender {

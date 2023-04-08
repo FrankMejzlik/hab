@@ -439,8 +439,8 @@ impl<
     }
 
     fn store_state(&mut self) {
-        create_dir_all(&self.params.id_dir).expect("!");
-        let filepath = format!("{}/{}", self.params.id_dir, self.params.id_filename);
+        create_dir_all(&self.params.id_filename).expect("!");
+        let filepath = &self.params.id_filename;
 
         let mut file = File::create(filepath).expect("The file should be writable!");
 
@@ -616,7 +616,7 @@ impl<
     /// Constructs and initializes a block signer with the given parameters.
     fn new(params: BlockSignerParams) -> Self {
         // Try to load the identity from the disk
-        match Self::load_state(&format!("{}/{}", params.id_dir, params.id_filename)) {
+        match Self::load_state(&params.id_filename) {
             Some(x) => {
                 info!(tag: "sender", "The existing ID was loaded.");
                 debug!(tag: "block_signer", "{}", x.dump_layers());
@@ -638,12 +638,12 @@ impl<
         let mut rng = CsPrng::seed_from_u64(params.seed);
 
         // We generate `cert_interval` keys backward and `cert_interval` keys forward
-        let cw_size = utils::calc_cert_window(params.cert_interval);
+        let cw_size = utils::calc_cert_window(params.pre_cert.unwrap());
 
         let mut layers = KeyLayers::new(
             num_layers,
             params.key_lifetime,
-            params.cert_interval,
+            params.pre_cert.unwrap(),
             avg_sign_rate,
         );
         for l_idx in 0..num_layers {
@@ -657,7 +657,7 @@ impl<
             params,
             rng,
             layers,
-            pks: PubKeyStore::new(0),
+            pks: PubKeyStore::new(),
             distr,
             _x: PhantomData,
         };
@@ -759,7 +759,7 @@ impl<
     /// Constructs and initializes a block signer with the given parameters.
     fn new(params: BlockSignerParams) -> Self {
         // Try to load the identity from the disk
-        match Self::load_state(&format!("{}/{}", params.id_dir, params.id_filename)) {
+        match Self::load_state(&params.id_filename) {
             Some(mut x) => {
                 info!(tag: "receiver", "The existing ID was loaded.");
                 debug!(tag: "block_verifier", "{}", x.dump_layers());
@@ -771,12 +771,11 @@ impl<
             None => info!(tag: "receiver", "No existing ID found, creating a new one."),
         };
         info!(tag: "receiver", "Creating new `BlockVerifier`.");
-        let cert_int = params.cert_interval;
         let new_inst = BlockSigner {
             params,
             rng: CsPrng::seed_from_u64(0),                  //< Not used
-            layers: KeyLayers::new(0, 0, cert_int, vec![]), //< Not used
-            pks: PubKeyStore::new(cert_int),
+            layers: KeyLayers::new(0, 0, 0, vec![]), //< Not used
+            pks: PubKeyStore::new(),
             distr: DiscreteDistribution::new(vec![]), //< Not used
             _x: PhantomData,
         };
@@ -825,7 +824,7 @@ impl<
         let verify_hint_key = signed_block.pub_keys.first().expect("Should be there!");
 
         // Is this the first message from the target sender (we'll put the pubkeys directly to it's identity)?
-        let (sender_id, verify_ours) = if let Some((existing_id, _)) =
+        let (mut sender_id, verify_ours) = if let Some((existing_id, _)) =
             self.pks.get_id_cc(&self.params.target_petname)
         {
             trace!(tag: "receiver", "(!) Using the existing ID: {:?} (!)", existing_id.petnames);
@@ -866,7 +865,7 @@ impl<
                 self.pks.store_pks_for_identity(
                     verify_idx,
                     signed_block.pub_keys,
-                    &sender_id,
+                    &mut sender_id,
                     signed_block.seq,
                 );
 

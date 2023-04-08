@@ -182,8 +182,6 @@ impl FragmentedBlocks {
 pub struct NetReceiverParams {
     pub addr: String,
     pub running: Arc<AtomicBool>,
-    pub datagram_size: usize,
-    pub net_buffer_size: usize,
     /// An alternative output destination instread of network.
     pub alt_input: Option<std::sync::mpsc::Receiver<Vec<u8>>>,
 }
@@ -226,7 +224,7 @@ impl NetReceiver {
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
 
         let mut alt_dgram_receiver = params.alt_input.take();
-        let buff_size = params.net_buffer_size;
+        let buff_size = 65_536 * 2;
         std::thread::spawn(move || {
             let mut buf = vec![0; buff_size];
             loop {

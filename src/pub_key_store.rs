@@ -122,17 +122,17 @@ pub struct PubKeyStore<PublicKey: PublicKeyBounds> {
     // ---
     /// Next ID to assign when generating a new sender ID
     pub next_id: SenderId,
-    pub cert_window: usize,
+    pub cert_window: Option<usize>,
 }
 
 impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
-    pub fn new(cert_interval: usize) -> Self {
+    pub fn new() -> Self {
         PubKeyStore {
             graph: DiGraph::new(),
             pk_to_node_idx: BTreeMap::new(),
             id_to_scc: BTreeMap::new(),
             next_id: 0,
-            cert_window: 2 * utils::calc_cert_window(cert_interval) - 1,
+            cert_window: None,
         }
     }
 
@@ -140,16 +140,22 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         &mut self,
         cert_by_key_idx: NodeIndex,
         pub_keys: Vec<PubKeyTransportCont<PublicKey>>,
-        sender_id: &SenderIdentity,
+        sender_id: &mut SenderIdentity,
         seq: SeqNum,
     ) {
+		let mut width = 0;
         for kw in pub_keys.iter() {
             // Get a key to store
             let key_to_store = StoredPubKey::new_with_certified(kw, sender_id.clone(), seq);
 
+			if kw.layer == 0 {
+				width += 1;
+			}
+
             // Insert the key to the graph
             self.insert_key(cert_by_key_idx, key_to_store);
         }
+		sender_id.cert_window = Some(width);
     }
 
     pub fn get_key(&self, key: &PublicKey, target_id: &SenderIdentity) -> Option<NodeIndex> {
@@ -347,7 +353,7 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         }
 
         for layer in hist_layers.iter_mut() {
-            let to_drain = std::cmp::max(0, layer.len() as i64 - self.cert_window as i64) as usize;
+            let to_drain = std::cmp::max(0, layer.len() as i64 - target_id.cert_window.unwrap() as i64) as usize;
             let to_delete = layer.drain(..to_drain);
 
             for (_, idx) in to_delete {

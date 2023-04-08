@@ -2,34 +2,59 @@
 library(ggplot2)
 library(cowplot)
 library(reshape2)
-
-# Read in the data from the file
-data <- read.table("reauth_time.tsv", header = TRUE, sep = "\t")
-
-# Compute the mean of num_to_reauth for each combination of the first four columns
-data_mean <- aggregate(num_to_reauth ~ key_selection + key_lifetime + PC + num_received + num_missed, data, function(x) c(mean = mean(x), q1 = quantile(x, 0.25), q3 = quantile(x, 0.75)))
+library(dplyr)
+library(stringr)
+library(gtable) # Add gtable library
+library(grid)   # Add grid library
 
 
-# Calculate the median
-grouped_data <- data %>%
-  group_by(key_selection, key_lifetime, PC, num_received, num_missed) %>%
-  summarize(median = median(num_to_reauth),
-            q25 = quantile(num_to_reauth, 0.25),
-            q75 = quantile(num_to_reauth, 0.75))
+max_y <- 200
 
-line_chart <- ggplot(grouped_data, aes(x = num_missed)) +
-  geom_line(aes(y = median, color = "Median"), size = 2) +
-  geom_line(aes(y = q75, color = "3rd Quartile"), size = 1) +
-  geom_line(aes(y = q25, color = "1st Quartile"), size = 1) +
-  scale_color_manual(values = c("Median" = "black", "1st Quartile" = "gray", "3rd Quartile" = "gray")) +
-  labs(title = "Median and Upper Quartile of Received Packets",
-       x = "Number of Missed Packets",
-       y = "Values",
-       color = "Statistic") +
-  theme_minimal()
+# Get a list of file names in the directory
+#file_list <- list.files("data/", pattern = "\\.tsv$", full.names = TRUE)
+file_list <- list(
+	"data/reauth_time/reauth_time__ksskip-exponential__pc1__kl1.tsv", 
+	"data/reauth_time/reauth_time__ksskip-exponential__pc2__kl1.tsv",
+	"data/reauth_time/reauth_time__ksskip-exponential__pc10__kl1.tsv"
+	)
 
-# Print the plot
-plot
+
+# Create an empty plot
+line_chart <- ggplot() + theme_cowplot(font_size=16) +
+	scale_linetype_manual(values = c("solid", "dashed")) +
+  labs(	x = "Missed messages",
+		y = "Messages to re-authenticate",
+		color = "Pre-cert",
+		linetype = ""
+	) +
+	scale_x_continuous(expand = c(0, 0)) +  # Reduce space between x-axis and zero
+  	scale_y_continuous(expand = c(0, 0), limits =c(0, max_y)) +  # Reduce space between y-axis and zero
+  theme(legend.position = c(0.05, 0.97), plot.margin = margin(10, 12, 0, 0, "pt")) 
+
+
+for (input_file in file_list) {
+	print(paste("Processing file:", input_file));
+	file_name <- basename(input_file)
+	pc_num <- str_extract(file_name, "(?<=pc)\\d+")
+	print(pc_num)
+
+	data <- read.table(input_file, header = TRUE, sep = "\t")
+	grouped_data <- data %>% group_by(key_selection, key_lifetime, PC, num_received, num_missed) %>% summarize(median = median(num_to_reauth), q25 = quantile(num_to_reauth, 0.25), q75 = quantile(num_to_reauth, 0.75), .groups = "drop")
+	# Add a new column 'pc_num' to the grouped_data data frame
+    grouped_data$pc_num <- pc_num
+
+	line_chart <- line_chart +
+	    geom_line(data = grouped_data, aes(x = num_missed, y = median, color = factor(pc_num), linetype = "Median"), linewidth = 1) +
+		geom_line(data = grouped_data, aes(x = num_missed, y = q75, color = factor(pc_num), linetype = "Quartile"), linewidth = 0.5) +
+		geom_line(data = grouped_data, aes(x = num_missed, y = q25, color = factor(pc_num), linetype = "Quartile"), linewidth = 0.5)
+}
+
+gt <- ggplotGrob(line_chart)
+gt$layout$clip[gt$layout$name == "axis-l"] <- "off"
+gt$grobs[[which(gt$layout$name == "axis-l")]]$children[[2]]$hjust <- -0.5
+
+
+ggsave(paste("out/re-auth-time", ".pdf", sep=""), units='in', width=5, height=4, gt)
 
 
 # library(ggplot2)

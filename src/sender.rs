@@ -5,6 +5,7 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
+use std::sync::mpsc;
 // ---
 // ---
 use crate::common::{BlockSignerParams, Error};
@@ -15,20 +16,19 @@ use crate::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
 pub struct SenderParams {
-    pub seed: u64,
-    pub addr: String,
-    pub running: Arc<AtomicBool>,
-    pub id_dir: String,
     pub id_filename: String,
-    pub subscriber_lifetime: Duration,
-    pub net_buffer_size: usize,
-    pub datagram_size: usize,
-    pub key_lifetime: usize,
-    pub cert_interval: usize,
-    pub max_piece_size: usize,
+    pub seed: u64,
     pub key_dist: Vec<Vec<usize>>,
+    pub pre_cert: usize,
+    pub key_lifetime: usize,
+    pub max_piece_size: usize,
+    pub datagram_size: usize,
+    pub receiver_lifetime: Duration,
+	// ---
+	pub sender_addr: String,
+    pub running: Arc<AtomicBool>,
     /// An alternative output destination instread of network.
-    pub alt_output: Option<std::sync::mpsc::Sender<Vec<u8>>>,
+    pub alt_output: Option<mpsc::Sender<Vec<u8>>>,
 }
 
 pub struct Sender<BlockSigner: BlockSignerTrait> {
@@ -41,21 +41,19 @@ impl<BlockSigner: BlockSignerTrait> Sender<BlockSigner> {
     pub fn new(params: SenderParams) -> Self {
         let block_signer_params = BlockSignerParams {
             seed: params.seed,
-            id_dir: params.id_dir.clone(),
             id_filename: params.id_filename.clone(),
             target_petname: String::default(), //< Not used in `Sender`
             key_lifetime: params.key_lifetime,
-            cert_interval: params.cert_interval,
+            pre_cert: Some(params.pre_cert),
             max_piece_size: params.max_piece_size,
             key_dist: params.key_dist.clone(),
         };
         let signer = BlockSigner::new(block_signer_params);
 
         let net_sender_params = NetSenderParams {
-            addr: params.addr.clone(),
+            addr: params.sender_addr.clone(),
             running: params.running.clone(),
-            subscriber_lifetime: params.subscriber_lifetime,
-            net_buffer_size: params.net_buffer_size,
+            subscriber_lifetime: params.receiver_lifetime,
             datagram_size: params.datagram_size,
             max_piece_size: params.max_piece_size,
             alt_output: params.alt_output.clone(),

@@ -126,8 +126,6 @@ pub struct MsgMetadata {
 /// Struct holding parameters for the sender.
 pub struct BlockSignerParams {
     pub seed: u64,
-    /// A directory name where the identity stores will be stored.
-    pub id_dir: String,
     /// A filename where the identity sotres will be serialized.
     pub id_filename: String,
     /// User-defined name of the target identity.
@@ -135,7 +133,7 @@ pub struct BlockSignerParams {
     /// A number of signatures that one keypair can generate.
     pub key_lifetime: usize,
     /// A number of keys to certify forward (and backward).
-    pub cert_interval: usize,
+    pub pre_cert: Option<usize>,
     /// A maximum byte size of payload in one piece.
     pub max_piece_size: usize,
     pub key_dist: Vec<Vec<usize>>,
@@ -147,6 +145,7 @@ pub struct SenderIdentity {
     pub petnames: Vec<String>,
     // If true, the identity still has some nodes in the identity graph and has chance to be re-authenticated.
     pub alive: bool,
+	pub cert_window: Option<usize>,
 }
 
 impl SenderIdentity {
@@ -155,6 +154,7 @@ impl SenderIdentity {
             ids: vec![id],
             petnames: vec![petname],
             alive: false,
+			cert_window: None,
         }
     }
     pub fn merge(&mut self, mut other: SenderIdentity) {
