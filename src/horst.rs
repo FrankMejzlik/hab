@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
 use crate::merkle_tree::MerkleTree;
-use crate::traits::{IntoFromBytes, KeyPair, PublicKeyBounds, FtsSchemeTrait};
+use crate::traits::{IntoFromBytes, KeyPair, PublicKeyBounds, FtsSchemeTrait, Key};
 use crate::utils;
 
 pub type HorstKeypair<const T: usize, const N: usize> =
@@ -133,6 +133,12 @@ impl<const N: usize> IntoFromBytes for HorstPublicKey<N> {
             return Err(Error::new("Invalid public key size!"));
         }
         Ok(HorstPublicKey { data: bytes })
+    }
+}
+
+impl<const N: usize> Key for HorstPublicKey<N> {
+    fn data(&self) -> &[u8] {
+        &self.data
     }
 }
 

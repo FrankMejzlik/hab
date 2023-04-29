@@ -21,6 +21,7 @@ use crate::constants;
 use crate::log_graph;
 use crate::traits::IntoFromBytes;
 use crate::traits::KeyPair;
+use crate::traits::PublicKeyBounds;
 use bincode::{deserialize, serialize};
 use byteorder::BigEndian;
 use byteorder::LittleEndian;
@@ -56,19 +57,19 @@ use crate::{debug, error, info, trace, warn};
 /// A wrapper for one key that the sender manages in it's store.
 ///
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-struct KeyPairStoreCont<const T: usize, const N: usize> {
-    key: HorstKeypair<T, N>,
+struct KeyPairStoreCont<SecretKey, PublicKey> {
+    key: KeyPair<SecretKey, PublicKey>,
     last_cerified: UnixTimestamp,
     lifetime: usize,
     cert_count: usize,
 }
 
-impl<const T: usize, const N: usize> Display for KeyPairStoreCont<T, N> {
+impl<SecretKey, PublicKey:PublicKeyBounds> Display for KeyPairStoreCont<SecretKey, PublicKey> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
             f,
             "{} -> {:02} ({:03})",
-            utils::shorten(&utils::to_hex(&self.key.public.data), 6),
+            utils::shorten(&utils::to_hex(&self.key.public.data()), 6),
             //utils::unix_ts_to_string(self.last_cerified),
             self.lifetime,
             self.cert_count
@@ -239,9 +240,9 @@ impl<Signature: Serialize + IntoFromBytes, PublicKey: Serialize + IntoFromBytes>
 }
 
 #[derive(Serialize, Debug, Deserialize, PartialEq)]
-pub struct KeyLayers<const T: usize, const N: usize> {
+pub struct KeyLayers<SecretKey, PublicKey:PublicKeyBounds> {
     /// The key containers in their layers (indices).
-    data: Vec<VecDeque<Arc<KeyPairStoreCont<T, N>>>>,
+    data: Vec<VecDeque<Arc<KeyPairStoreCont<SecretKey, PublicKey>>>>,
     /// List of seq number when the key layer can be used once again (default 0)
     ready_at: Vec<f64>,
     /// The average rate at which this layer signs.
@@ -258,7 +259,7 @@ pub struct KeyLayers<const T: usize, const N: usize> {
     cert_window: usize,
 }
 
-impl<const T: usize, const N: usize> KeyLayers<T, N> {
+impl<SecretKey, PublicKey:PublicKeyBounds> KeyLayers<SecretKey, PublicKey> {
     pub fn new(
         depth: usize,
         key_lifetime: usize,
@@ -283,7 +284,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
         self.ready_at[level] < self.next_seq as f64
     }
 
-    fn insert(&mut self, level: usize, keypair: HorstKeypair<T, N>) {
+    fn insert(&mut self, level: usize, keypair: KeyPair<SecretKey, PublicKey>) {
         let key_cont = Arc::new(KeyPairStoreCont {
             key: keypair,
             last_cerified: 0,
@@ -302,9 +303,9 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
         &mut self,
         layer: usize,
     ) -> (
-        Arc<KeyPairStoreCont<T, N>>,
+        Arc<KeyPairStoreCont<SecretKey, PublicKey>>,
         bool,
-        Vec<PubKeyTransportCont<PublicKey<N>>>,
+        Vec<PubKeyTransportCont<PublicKey>>,
     ) {
         let signing_idx = self.cert_window / 2;
         let resulting_key;
@@ -360,7 +361,7 @@ impl<const T: usize, const N: usize> KeyLayers<T, N> {
     }
 }
 
-impl<const T: usize, const N: usize> Display for KeyLayers<T, N> {
+impl<SecretKey, PublicKey:PublicKeyBounds> Display for KeyLayers<SecretKey, PublicKey> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         let mut res = String::new();
 
@@ -394,7 +395,7 @@ pub struct BlockSigner<
 > {
     params: BlockSignerParams,
     rng: CsPrng,
-    layers: KeyLayers<T, TREE_HASH_SIZE>,
+    layers: KeyLayers<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey>,
     pks: PubKeyStore<<Self as MessageSignerTrait>::PublicKey>,
     distr: DiscreteDistribution,
     _x: PhantomData<(MsgHashFn, TreeHashFn)>,
@@ -505,9 +506,9 @@ impl<
             .expect("Failed to read state from file");
 
         let rng: CsPrng = deserialize(&rng_bytes).expect("!");
-        let layers = deserialize::<KeyLayers<T, TREE_HASH_SIZE>>(&layers_bytes).expect("!");
+        let layers = deserialize::<KeyLayers<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey>>(&layers_bytes).expect("!");
         let pks =
-            deserialize::<PubKeyStore<HorstPublicKey<TREE_HASH_SIZE>>>(&pks_bytes).expect("!");
+            deserialize::<PubKeyStore<<Self as MessageSignerTrait>::PublicKey>>(&pks_bytes).expect("!");
         let distr: DiscreteDistribution = deserialize(&distr_bytes).expect("!");
         let params: BlockSignerParams = deserialize(&config_bytes).expect("!");
 
@@ -531,8 +532,8 @@ impl<
     fn next_key(
         &mut self,
     ) -> (
-        Arc<KeyPairStoreCont<T, TREE_HASH_SIZE>>,
-        Vec<PubKeyTransportCont<PublicKey<TREE_HASH_SIZE>>>,
+        Arc<KeyPairStoreCont<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey>>,
+        Vec<PubKeyTransportCont<<Self as MessageSignerTrait>::PublicKey>>,
     ) {
         // TODO: Use key pauses
 

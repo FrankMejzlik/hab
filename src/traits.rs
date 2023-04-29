@@ -20,10 +20,14 @@ use crate::common::{BlockSignerParams, Error, ReceivedMessage, SeqType, VerifyRe
 /// https://github.com/rust-lang/rust/issues/41517
 ///
 
+pub trait Key {
+	fn data(&self) -> &[u8];
+}
+
 /// The trait bounds we appply on a `PublicKey` generic type.
 
 pub trait PublicKeyBounds:
-    Debug + Clone + PartialEq + Eq + PartialOrd + Ord + IntoFromBytes
+    Debug + Clone + PartialEq + Eq + PartialOrd + Ord + IntoFromBytes + Key
 {
 }
 // ----------------------------------
