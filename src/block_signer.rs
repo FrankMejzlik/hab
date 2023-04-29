@@ -31,9 +31,8 @@ use core::fmt::Debug;
 use petgraph::dot::Config;
 use petgraph::dot::Dot;
 use rand::prelude::Distribution;
-use rand_core::{CryptoRng, RngCore, SeedableRng};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use sha3::Digest;
+use rand_core::SeedableRng;
+use serde::{Deserialize, Serialize};
 use xxhash_rust::xxh3::xxh3_64;
 
 // ---
@@ -381,34 +380,16 @@ impl<SecretKey, PublicKey: PublicKeyBounds> Display for KeyLayers<SecretKey, Pub
 }
 
 #[derive(Debug)]
-pub struct BlockSigner<
-    const N: usize,
-    const K: usize,
-    const TAU: usize,
-    const TAUPLUS: usize,
-    const T: usize,
-    CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-    TreeHashFn: Digest + Debug,
-> {
+pub struct BlockSigner<Signer: FtsSchemeTrait> {
     params: BlockSignerParams,
-    rng: CsPrng,
-    layers:
-        KeyLayers<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey>,
-    pks: PubKeyStore<<Self as MessageSignerTrait>::PublicKey>,
+    rng: Signer::CsPrng,
+    layers: KeyLayers<Signer::SecretKey, Signer::PublicKey>,
+    pks: PubKeyStore<Signer::PublicKey>,
     distr: DiscreteDistribution,
-    _x: PhantomData<TreeHashFn>,
+    _x: PhantomData<Signer::TreeHashFn>,
 }
 
-impl<
-        const N: usize,
-        const K: usize,
-        const TAU: usize,
-        const TAUPLUS: usize,
-        const T: usize,
-        CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-        TreeHashFn: Digest + Debug,
-    > BlockSigner<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>
-{
+impl<Signer: FtsSchemeTrait> BlockSigner<Signer> {
     fn new_id(&mut self, petname: String) -> SenderIdentity {
         let id = SenderIdentity::new(self.pks.next_id, petname);
         self.pks.next_id += 1;
@@ -500,16 +481,10 @@ impl<
         file.read_exact(&mut config_bytes)
             .expect("Failed to read state from file");
 
-        let rng: CsPrng = deserialize(&rng_bytes).expect("!");
-        let layers = deserialize::<
-            KeyLayers<
-                <Self as MessageSignerTrait>::SecretKey,
-                <Self as MessageSignerTrait>::PublicKey,
-            >,
-        >(&layers_bytes)
-        .expect("!");
-        let pks = deserialize::<PubKeyStore<<Self as MessageSignerTrait>::PublicKey>>(&pks_bytes)
+        let rng: Signer::CsPrng = deserialize(&rng_bytes).expect("!");
+        let layers = deserialize::<KeyLayers<Signer::SecretKey, Signer::PublicKey>>(&layers_bytes)
             .expect("!");
+        let pks = deserialize::<PubKeyStore<Signer::PublicKey>>(&pks_bytes).expect("!");
         let distr: DiscreteDistribution = deserialize(&distr_bytes).expect("!");
         let params: BlockSignerParams = deserialize(&config_bytes).expect("!");
 
@@ -524,23 +499,15 @@ impl<
         })
     }
 
-    fn new_keypair(
-        &mut self,
-    ) -> KeyPair<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey>
-    {
-        <Self as MessageSignerTrait>::Signer::gen_key_pair(&mut self.rng)
+    fn new_keypair(&mut self) -> KeyPair<Signer::SecretKey, Signer::PublicKey> {
+        Signer::gen_key_pair(&mut self.rng)
     }
 
     fn next_key(
         &mut self,
     ) -> (
-        Arc<
-            KeyPairStoreCont<
-                <Self as MessageSignerTrait>::SecretKey,
-                <Self as MessageSignerTrait>::PublicKey,
-            >,
-        >,
-        Vec<PubKeyTransportCont<<Self as MessageSignerTrait>::PublicKey>>,
+        Arc<KeyPairStoreCont<Signer::SecretKey, Signer::PublicKey>>,
+        Vec<PubKeyTransportCont<Signer::PublicKey>>,
     ) {
         // TODO: Use key pauses
 
@@ -579,23 +546,11 @@ impl<
     }
 }
 
-impl<
-        const N: usize,
-        const K: usize,
-        const TAU: usize,
-        const TAUPLUS: usize,
-        const T: usize,
-        CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-        TreeHashFn: Digest + Debug,
-    > MessageSignerTrait for BlockSigner<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>
-{
+impl<Signer: FtsSchemeTrait> MessageSignerTrait for BlockSigner<Signer> {
     type Error = Error;
-    type Signer = HorstSigScheme<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>;
 
-    type SecretKey = <Self::Signer as FtsSchemeTrait>::SecretKey;
-    type PublicKey = <Self::Signer as FtsSchemeTrait>::PublicKey;
-    type Signature = <Self::Signer as FtsSchemeTrait>::Signature;
-    type SignedMessage = SignedBlock<Self::Signature, Self::PublicKey>;
+    type PublicKey = Signer::PublicKey;
+    type Signature = Signer::Signature;
 
     /// Constructs and initializes a block signer with the given parameters.
     fn new(params: BlockSignerParams) -> Self {
@@ -625,7 +580,7 @@ impl<
         let (distr, avg_sign_rate) = utils::lifetimes_to_distr(&params.key_dist);
 
         // Initially populate the layers with keys
-        let mut rng = CsPrng::seed_from_u64(params.seed);
+        let mut rng = Signer::CsPrng::seed_from_u64(params.seed);
 
         // We generate `cert_interval` keys backward and `cert_interval` keys forward
         let cw_size = utils::calc_cert_window(params.pre_cert.unwrap());
@@ -639,7 +594,7 @@ impl<
         for l_idx in 0..num_layers {
             // Generate the desired number of keys per layer to forward & backward certify them
             for _ in 0..cw_size {
-                layers.insert(l_idx, Self::Signer::gen_key_pair(&mut rng));
+                layers.insert(l_idx, Signer::gen_key_pair(&mut rng));
             }
         }
 
@@ -656,7 +611,11 @@ impl<
         new_inst
     }
 
-    fn sign(&mut self, data: Vec<u8>, seq: SeqType) -> Result<Self::SignedMessage, Error> {
+    fn sign(
+        &mut self,
+        data: Vec<u8>,
+        seq: SeqType,
+    ) -> Result<SignedBlock<Signer::Signature, Signer::PublicKey>, Error> {
         let start = utils::start();
         let (sk, pub_keys) = self.next_key();
         utils::stop("\t\tBlockSigner::next_key()", start);
@@ -685,7 +644,7 @@ impl<
         utils::stop("\t\tBlockSigner::prep to_sign", start);
         let start = utils::start();
 
-        let signature = Self::Signer::sign(&data_to_sign, &sk.key.secret);
+        let signature = Signer::sign(&data_to_sign, &sk.key.secret);
         debug!(tag: "block_signer", "{}", self.dump_layers());
         utils::stop("\t\tBlockSigner::sign()", start);
 
@@ -705,23 +664,8 @@ impl<
     }
 }
 
-impl<
-        const N: usize,
-        const K: usize,
-        const TAU: usize,
-        const TAUPLUS: usize,
-        const T: usize,
-        CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-        TreeHashFn: Digest + Debug,
-    > MessageVerifierTrait for BlockSigner<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>
-{
+impl<Signer: FtsSchemeTrait> MessageVerifierTrait for BlockSigner<Signer> {
     type Error = Error;
-    type Signer = HorstSigScheme<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>;
-
-    type SecretKey = <Self::Signer as FtsSchemeTrait>::SecretKey;
-    type PublicKey = <Self::Signer as FtsSchemeTrait>::PublicKey;
-    type Signature = <Self::Signer as FtsSchemeTrait>::Signature;
-    type SignedMessage = SignedBlock<Self::Signature, Self::PublicKey>;
 
     /// Constructs and initializes a block signer with the given parameters.
     fn new(params: BlockSignerParams) -> Self {
@@ -745,7 +689,7 @@ impl<
 
         let new_inst = BlockSigner {
             params,
-            rng: CsPrng::seed_from_u64(0),           //< Not used
+            rng: Signer::CsPrng::seed_from_u64(0), //< Not used
             layers: KeyLayers::new(0, 0, 0, vec![]), //< Not used
             pks: PubKeyStore::new(),
             distr: DiscreteDistribution::new(vec![]), //< Not used
@@ -759,7 +703,7 @@ impl<
     }
 
     fn verify(&mut self, data: Vec<u8>) -> Result<VerifyResult, Error> {
-        let signed_block = match Self::SignedMessage::from_network_bytes(data) {
+        let signed_block = match SignedBlock::from_network_bytes(data) {
             Ok(x) => x,
             Err(_) => return Err(Error::new(constants::DESER_FAILED)),
         };
@@ -828,7 +772,7 @@ impl<
                 .expect("Should be set!")
                 .clone();
 
-            if Self::Signer::verify(&to_verify, &signed_block.signature, &key_cont.key) {
+            if Signer::verify(&to_verify, &signed_block.signature, &key_cont.key) {
                 trace!(tag: "receiver", "Verified with key: {key_cont:?}");
 
                 verification = MessageAuthentication::Certified(sender_id.clone());
@@ -879,9 +823,11 @@ impl<
 #[cfg(test)]
 mod tests {
     // ---
+    use rand::RngCore;
     use rand_chacha::ChaCha20Rng;
     // ---
     use super::*;
+    use crate::horst::HorstPublicKey;
     use crate::horst::HorstSignature;
 
     const SEED: u64 = 42;

@@ -2,6 +2,8 @@
 //! The main module providing high-level API for the sender of the data.
 //!
 
+use crate::block_signer::BlockSigner;
+use crate::FtsSchemeTrait;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -40,13 +42,12 @@ pub struct SenderParams {
     pub alt_output: Option<mpsc::Sender<Vec<u8>>>,
 }
 
-pub struct Sender<BlockSigner: MessageSignerTrait> {
-    #[allow(dead_code)]
+pub struct Sender<Signer: FtsSchemeTrait> {
     params: SenderParams,
-    signer: BlockSigner,
+    signer: BlockSigner<Signer>,
     net_sender: NetSender,
 }
-impl<BlockSigner: MessageSignerTrait> Sender<BlockSigner> {
+impl<Signer: FtsSchemeTrait> Sender<Signer> {
     pub fn new(params: SenderParams) -> Self {
         let block_signer_params = BlockSignerParams {
             seed: params.seed,
@@ -77,7 +78,7 @@ impl<BlockSigner: MessageSignerTrait> Sender<BlockSigner> {
     }
 }
 
-impl<BlockSigner: MessageSignerTrait> SenderTrait for Sender<BlockSigner> {
+impl<Signer: FtsSchemeTrait> SenderTrait for Sender<Signer> {
     fn broadcast(&mut self, data: Vec<u8>) -> Result<(), Error> {
         // Iterate over pieces
         for message in data.chunks(self.params.max_piece_size) {

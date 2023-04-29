@@ -5,6 +5,7 @@
 use std::error::Error as ErrorTrait;
 use std::fmt::Debug;
 // ---
+use crate::block_signer::SignedBlock;
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -55,6 +56,7 @@ pub trait ReceiverTrait {
 }
 
 pub trait SignedBlockTrait {
+    //fn new(data: Vec<u8>) -> Self;
     fn hash(&self) -> u64;
 }
 pub trait IntoFromBytes {
@@ -81,14 +83,15 @@ pub trait IntoFromBytes {
 ///
 pub trait MessageSignerTrait {
     type Error: ErrorTrait;
-    type Signer: FtsSchemeTrait;
-    type SecretKey;
-    type PublicKey: PublicKeyBounds;
-    type Signature;
-    type SignedMessage: SignedBlockTrait + Serialize + DeserializeOwned + IntoFromBytes;
+    type PublicKey: PublicKeyBounds + Serialize + DeserializeOwned;
+    type Signature: Serialize + DeserializeOwned + IntoFromBytes;
 
     fn new(params: BlockSignerParams) -> Self;
-    fn sign(&mut self, message: Vec<u8>, seq: SeqType) -> Result<Self::SignedMessage, Self::Error>;
+    fn sign(
+        &mut self,
+        message: Vec<u8>,
+        seq: SeqType,
+    ) -> Result<SignedBlock<Self::Signature, Self::PublicKey>, Error>;
     fn next_seq(&mut self) -> SeqType;
 }
 
@@ -104,11 +107,6 @@ pub trait MessageSignerTrait {
 ///
 pub trait MessageVerifierTrait {
     type Error: ErrorTrait;
-    type Signer: FtsSchemeTrait;
-    type SecretKey;
-    type PublicKey: PublicKeyBounds;
-    type Signature;
-    type SignedMessage: SignedBlockTrait + Serialize + DeserializeOwned + IntoFromBytes;
 
     fn new(params: BlockSignerParams) -> Self;
     fn verify(&mut self, piece: Vec<u8>) -> Result<VerifyResult, Self::Error>;
@@ -125,11 +123,13 @@ pub trait MessageVerifierTrait {
 /// `BlockSignerTrait`
 ///
 pub trait FtsSchemeTrait {
-    type CsPrng: CryptoRng + SeedableRng + RngCore;
+    type Error: ErrorTrait;
+    type CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned;
     type TreeHashFn: Digest;
-    type SecretKey;
-    type PublicKey;
-    type Signature;
+    type SecretKey: Serialize + DeserializeOwned;
+    type PublicKey: PublicKeyBounds + Serialize + DeserializeOwned;
+    type Signature: Serialize + DeserializeOwned + IntoFromBytes;
+    //type SignedMessage: SignedBlockTrait + Serialize + DeserializeOwned + IntoFromBytes;
 
     ///
     /// Checks the configured parameters. It is recommended to do the chceck during the initialization.

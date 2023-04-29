@@ -2,18 +2,19 @@
 //! The main module providing high-level API for the receiver of the data.
 //!
 
-use std::collections::HashMap;
+use crate::block_signer::BlockSigner;
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 // ---
 // ---
-use crate::common::{BlockSignerParams, Error, ReceivedMessage, SenderIdentity, SeqType};
+use crate::common::{BlockSignerParams, Error, ReceivedMessage};
 use crate::delivery_queues::{DeliveryQueues, DeliveryQueuesParams};
 use crate::net_receiver::{NetReceiver, NetReceiverParams};
 use crate::traits::{MessageVerifierTrait, ReceiverTrait};
-use crate::utils;
+use crate::{utils, FtsSchemeTrait};
 // ---
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
@@ -36,17 +37,14 @@ pub struct ReceiverParams {
     pub alt_input: Option<mpsc::Receiver<Vec<u8>>>,
 }
 
-pub struct Receiver<BlockVerifier: MessageVerifierTrait + std::marker::Send + 'static> {
+pub struct Receiver<Signer: FtsSchemeTrait> {
     params: ReceiverParams,
-    #[allow(dead_code)]
-    verifier: Arc<Mutex<BlockVerifier>>,
-    #[allow(dead_code)]
-    prev_seqs: HashMap<SenderIdentity, SeqType>,
     delivery: Arc<Mutex<DeliveryQueues>>,
     skip_counter: Arc<AtomicUsize>,
+    _x: PhantomData<Signer>,
 }
 
-impl<BlockVerifier: MessageVerifierTrait + std::marker::Send> Receiver<BlockVerifier> {
+impl<Signer: FtsSchemeTrait> Receiver<Signer> {
     pub fn new(mut params: ReceiverParams) -> Self {
         let block_signer_params = BlockSignerParams {
             seed: 0,
@@ -57,7 +55,6 @@ impl<BlockVerifier: MessageVerifierTrait + std::marker::Send> Receiver<BlockVeri
             key_lifetime: 0,   //< Not used
             key_dist: vec![],  //< Not used
         };
-        let verifier = Arc::new(Mutex::new(BlockVerifier::new(block_signer_params)));
 
         let net_recv_params = NetReceiverParams {
             addr: params.target_addr.clone(),
@@ -66,7 +63,6 @@ impl<BlockVerifier: MessageVerifierTrait + std::marker::Send> Receiver<BlockVeri
         };
 
         let running_clone = params.running.clone();
-        let verifier_clone = verifier.clone();
 
         let delivery = Arc::new(Mutex::new(DeliveryQueues::new(DeliveryQueuesParams {
             deadline: params.delivery_delay,
@@ -77,6 +73,7 @@ impl<BlockVerifier: MessageVerifierTrait + std::marker::Send> Receiver<BlockVeri
         let skip_counter_clone = skip_counter.clone();
 
         std::thread::spawn(move || {
+            let mut verifier_clone = BlockSigner::<Signer>::new(block_signer_params);
             let mut net_receiver = NetReceiver::new(net_recv_params);
 
             while running_clone.load(Ordering::Acquire) {
@@ -118,19 +115,16 @@ impl<BlockVerifier: MessageVerifierTrait + std::marker::Send> Receiver<BlockVeri
                 }
 
                 {
-                    //< LOCK
-                    let mut verifier_guard = verifier_clone.lock().expect("Should be lockable!");
-
-                    let verify_result = match verifier_guard.verify(signed_block) {
+                    let verify_result = match verifier_clone.verify(signed_block) {
                         Ok(x) => x,
                         Err(e) => {
-                            warn!(tag: "receiver", "Failed to verify the signed block! ERRROR: {e}");
+                            warn!(tag: "receiver", "Failed to verify the signed block! ERROR: {e}");
                             continue;
                         }
                     };
 
+                    //< LOCK
                     let mut delivery_guard = delivery_clone.lock().expect("Should be lockable!");
-
                     delivery_guard.enqueue(verify_result);
                     //< UNLOCK
                 }
@@ -139,17 +133,14 @@ impl<BlockVerifier: MessageVerifierTrait + std::marker::Send> Receiver<BlockVeri
 
         Receiver {
             params,
-            verifier,
-            prev_seqs: HashMap::new(),
             delivery,
             skip_counter,
+            _x: PhantomData,
         }
     }
 }
 
-impl<BlockVerifier: MessageVerifierTrait + std::marker::Send> ReceiverTrait
-    for Receiver<BlockVerifier>
-{
+impl<Signer: FtsSchemeTrait + Send + Sync> ReceiverTrait for Receiver<Signer> {
     fn receive(&mut self) -> Result<ReceivedMessage, Error> {
         // The main loop polling messages from the DeliveryQueues.
         while self.params.running.load(Ordering::Acquire) {

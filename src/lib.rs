@@ -18,8 +18,8 @@ mod traits;
 pub mod common;
 pub mod utils;
 // ---
-pub use block_signer::BlockSigner;
 pub use common::Config;
+pub use horst::HorstSigScheme;
 pub use receiver::{Receiver, ReceiverParams};
 pub use sender::{Sender, SenderParams};
 pub use traits::{FtsSchemeTrait, ReceiverTrait, SenderTrait};

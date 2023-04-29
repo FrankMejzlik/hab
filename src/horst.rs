@@ -35,6 +35,7 @@ use hex::encode;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use rand_core::{CryptoRng, RngCore, SeedableRng};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
@@ -255,7 +256,7 @@ pub struct HorstSigScheme<
     const TAU: usize,
     const TAUPLUS: usize,
     const T: usize,
-    CsPrng: CryptoRng + SeedableRng + RngCore,
+    CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned,
     TreeHashFn: Digest,
 > {
     // To determine the type variance: https://stackoverflow.com/a/71276732
@@ -268,7 +269,7 @@ impl<
         const TAU: usize,
         const TAUPLUS: usize,
         const T: usize,
-        CsPrng: CryptoRng + SeedableRng + RngCore,
+        CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned,
         TreeHashFn: Digest,
     > HorstSigScheme<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>
 {
@@ -280,10 +281,11 @@ impl<
         const TAU: usize,
         const TAUPLUS: usize,
         const T: usize,
-        CsPrng: CryptoRng + SeedableRng + RngCore,
+        CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned,
         TreeHashFn: Digest,
     > FtsSchemeTrait for HorstSigScheme<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>
 {
+    type Error = Error;
     type CsPrng = CsPrng;
     type TreeHashFn = TreeHashFn;
     type SecretKey = HorstSecretKey<T, N>;
