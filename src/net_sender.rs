@@ -53,7 +53,7 @@ pub struct NetSender {
     /// A socked used for sending the data to the subscribers.
     sender_socket: Arc<UdpSocket>,
     /// A table of the subscribed receivers with the UNIX timestamp of the current lifetime.
-    subscribers: Subscribers,
+    subscribers: ActiveReceivers,
     // ---
     #[allow(dead_code)]
     messages: Vec<Vec<u8>>,
@@ -63,7 +63,7 @@ impl NetSender {
     pub fn new(params: NetSenderParams) -> Self {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
-        let subscribers = Subscribers::new();
+        let subscribers = ActiveReceivers::new();
 
         // Spawn the sender UDP socket
         let sender_socket = match rt.block_on(UdpSocket::bind(params.addr.clone())) {
@@ -271,7 +271,7 @@ impl NetSender {
     async fn registrator_task(
         socket: Arc<UdpSocket>,
         running: Arc<AtomicBool>,
-        mut subs: Subscribers,
+        mut subs: ActiveReceivers,
         lifetime: UnixTimestamp,
         buffer_size: usize,
     ) {
@@ -313,11 +313,11 @@ impl NetSender {
 /// Cloning this structure you're creating new owning reference to the table itself.
 ///
 #[derive(Debug, Clone)]
-struct Subscribers(Arc<Mutex<BTreeMap<SocketAddr, UnixTimestamp>>>);
+struct ActiveReceivers(Arc<Mutex<BTreeMap<SocketAddr, UnixTimestamp>>>);
 
-impl Subscribers {
+impl ActiveReceivers {
     pub fn new() -> Self {
-        Subscribers(Arc::new(Mutex::new(BTreeMap::new())))
+        ActiveReceivers(Arc::new(Mutex::new(BTreeMap::new())))
     }
 
     pub fn insert(

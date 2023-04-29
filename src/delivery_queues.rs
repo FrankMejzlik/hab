@@ -3,8 +3,8 @@ use std::collections::VecDeque;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use crate::common::MsgVerification;
-use crate::common::SeqNum;
+use crate::common::MessageAuthentication;
+use crate::common::SeqType;
 //---
 //---
 use crate::common::VerifyResult;
@@ -22,7 +22,7 @@ pub struct DeliveryQueues {
     /// Queue holding unverified messages to deliver (therse are not delivered in-order).
     unverified_queue: VecDeque<VerifyResult>,
     /// Next sequence number to deliver
-    next_delivery_seq: SeqNum,
+    next_delivery_seq: SeqType,
     /// A deadline for delivery of message that is being blocked by missing previos ones.
     next_delivery_deadline: std::time::SystemTime,
 }
@@ -70,7 +70,7 @@ impl DeliveryQueues {
     pub fn enqueue(&mut self, ver_res: VerifyResult) {
         match ver_res.verification {
             // Unverified messages are delivered as they come
-            MsgVerification::Unverified => {
+            MessageAuthentication::Unverified => {
                 self.unverified_queue.push_back(ver_res);
             }
             // Verified messages are delivered in-order

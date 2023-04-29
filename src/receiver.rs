@@ -9,10 +9,10 @@ use std::time::Duration;
 use std::sync::mpsc;
 // ---
 // ---
-use crate::common::{BlockSignerParams, Error, ReceivedBlock, SenderIdentity, SeqNum};
+use crate::common::{BlockSignerParams, Error, ReceivedMessage, SenderIdentity, SeqType};
 use crate::delivery_queues::{DeliveryQueues, DeliveryQueuesParams};
 use crate::net_receiver::{NetReceiver, NetReceiverParams};
-use crate::traits::{BlockVerifierTrait, ReceiverTrait};
+use crate::traits::{MessageVerifierTrait, ReceiverTrait};
 use crate::utils;
 // ---
 #[allow(unused_imports)]
@@ -20,28 +20,33 @@ use crate::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
 pub struct ReceiverParams {
+	/// A filename where the identity will be serialized.
     pub id_filename: String,
+	/// Maximum time to delay the delivery of a piece if subsequent pieces are already received.
     pub delivery_delay: Duration,
-	pub is_distributor: bool,
-	// ---
+	/// If this receiver should also re-send the received pieces.
+	pub distribute: Option<String>,
+	/// The IP address of the target sender.
     pub target_addr: String,
+	/// The name of the target sender (the petname).
     pub target_name: String,
+	/// A flag that indicates if the application should run or terminate.
 	pub running: Arc<AtomicBool>,
-    /// An alternative output destination instread of network.
+    /// An alternative output destination instead of a network (useful for testing).
     pub alt_input: Option<mpsc::Receiver<Vec<u8>>>,
 }
 
-pub struct Receiver<BlockVerifier: BlockVerifierTrait + std::marker::Send + 'static> {
+pub struct Receiver<BlockVerifier: MessageVerifierTrait + std::marker::Send + 'static> {
     params: ReceiverParams,
     #[allow(dead_code)]
     verifier: Arc<Mutex<BlockVerifier>>,
     #[allow(dead_code)]
-    prev_seqs: HashMap<SenderIdentity, SeqNum>,
+    prev_seqs: HashMap<SenderIdentity, SeqType>,
     delivery: Arc<Mutex<DeliveryQueues>>,
     skip_counter: Arc<AtomicUsize>,
 }
 
-impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifier> {
+impl<BlockVerifier: MessageVerifierTrait + std::marker::Send> Receiver<BlockVerifier> {
     pub fn new(mut params: ReceiverParams) -> Self {
         let block_signer_params = BlockSignerParams {
             seed: 0,
@@ -142,10 +147,10 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> Receiver<BlockVerifi
     }
 }
 
-impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
+impl<BlockVerifier: MessageVerifierTrait + std::marker::Send> ReceiverTrait
     for Receiver<BlockVerifier>
 {
-    fn receive(&mut self) -> Result<ReceivedBlock, Error> {
+    fn receive(&mut self) -> Result<ReceivedMessage, Error> {
         // The main loop polling messages from the DeliveryQueues.
         while self.params.running.load(Ordering::Acquire) {
             let received;
@@ -159,7 +164,7 @@ impl<BlockVerifier: BlockVerifierTrait + std::marker::Send> ReceiverTrait
             if let Some(verif_result) = received {
                 debug!(tag: "delivery_queues","[{}][{}][{}] {}", verif_result.seq, verif_result.hash, verif_result.msg.len(), utils::sha2_256_str(&verif_result.msg));
 
-                return Ok(ReceivedBlock::new(
+                return Ok(ReceivedMessage::new(
                     verif_result.msg,
                     verif_result.verification,
                     verif_result.seq,

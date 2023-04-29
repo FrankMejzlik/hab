@@ -9,7 +9,7 @@ use std::fmt;
 use std::vec;
 // ---
 use crate::block_signer::PubKeyTransportCont;
-use crate::common::SeqNum;
+use crate::common::SeqType;
 //use petgraph::algo::has_path_connecting;
 use serde::{Deserialize, Serialize};
 // ---
@@ -141,7 +141,7 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         cert_by_key_idx: NodeIndex,
         pub_keys: Vec<PubKeyTransportCont<PublicKey>>,
         sender_id: &mut SenderIdentity,
-        seq: SeqNum,
+        seq: SeqType,
     ) {
 		let mut width = 0;
         for kw in pub_keys.iter() {
@@ -327,7 +327,7 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
     }
 
     pub fn prune_graph(&mut self, target_id: &SenderIdentity) {
-        let cmp_key = |x: &(SeqNum, NodeIndex)| x.0;
+        let cmp_key = |x: &(SeqType, NodeIndex)| x.0;
 
         let mut hist_layers = vec![];
         let mut indices_to_delete = vec![];
@@ -353,7 +353,7 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         }
 
         for layer in hist_layers.iter_mut() {
-            let to_drain = std::cmp::max(0, layer.len() as i64 - target_id.cert_window.unwrap() as i64) as usize;
+            let to_drain = std::cmp::max(0, layer.len() as i64 - (2 * target_id.cert_window.unwrap() - 1) as i64) as usize;
             let to_delete = layer.drain(..to_drain);
 
             for (_, idx) in to_delete {

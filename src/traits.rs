@@ -10,7 +10,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
-use crate::common::{BlockSignerParams, Error, ReceivedBlock, SeqNum, VerifyResult};
+use crate::common::{BlockSignerParams, Error, ReceivedMessage, SeqType, VerifyResult};
 
 ///
 /// Global trait bound specifications.
@@ -45,7 +45,7 @@ pub trait SenderTrait {
 /// * `trait SenderTrait`
 ///
 pub trait ReceiverTrait {
-    fn receive(&mut self) -> Result<ReceivedBlock, Error>;
+    fn receive(&mut self) -> Result<ReceivedMessage, Error>;
     /// Ignores the next `count` incomming pieces.
     fn ignore_next(&mut self, count: usize);
 }
@@ -75,17 +75,17 @@ pub trait IntoFromBytes {
 /// `SignatureSchemeTrait`
 /// `BlockVerifierTrait`
 ///
-pub trait BlockSignerTrait {
+pub trait MessageSignerTrait {
     type Error: ErrorTrait;
-    type Signer: SignatureSchemeTrait;
+    type Signer: FtsSchemeTrait;
     type SecretKey;
     type PublicKey: PublicKeyBounds;
     type Signature;
-    type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned + IntoFromBytes;
+    type SignedMessage: SignedBlockTrait + Serialize + DeserializeOwned + IntoFromBytes;
 
     fn new(params: BlockSignerParams) -> Self;
-    fn sign(&mut self, data: Vec<u8>, seq: SeqNum) -> Result<Self::SignedBlock, Self::Error>;
-    fn next_seq(&mut self) -> SeqNum;
+    fn sign(&mut self, message: Vec<u8>, seq: SeqType) -> Result<Self::SignedMessage, Self::Error>;
+    fn next_seq(&mut self) -> SeqType;
 }
 
 ///
@@ -98,16 +98,16 @@ pub trait BlockSignerTrait {
 /// `SignatureSchemeTrait`
 /// `BlockSignerTrait`
 ///
-pub trait BlockVerifierTrait {
+pub trait MessageVerifierTrait {
     type Error: ErrorTrait;
-    type Signer: SignatureSchemeTrait;
+    type Signer: FtsSchemeTrait;
     type SecretKey;
     type PublicKey: PublicKeyBounds;
     type Signature;
-    type SignedBlock: SignedBlockTrait + Serialize + DeserializeOwned + IntoFromBytes;
+    type SignedMessage: SignedBlockTrait + Serialize + DeserializeOwned + IntoFromBytes;
 
     fn new(params: BlockSignerParams) -> Self;
-    fn verify(&mut self, data: Vec<u8>) -> Result<VerifyResult, Self::Error>;
+    fn verify(&mut self, piece: Vec<u8>) -> Result<VerifyResult, Self::Error>;
 }
 
 ///
@@ -120,7 +120,7 @@ pub trait BlockVerifierTrait {
 /// # See also
 /// `BlockSignerTrait`
 ///
-pub trait SignatureSchemeTrait {
+pub trait FtsSchemeTrait {
     type CsPrng: CryptoRng + SeedableRng + RngCore;
     type MsgHashFn: Digest;
     type TreeHashFn: Digest;

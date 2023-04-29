@@ -10,11 +10,12 @@ use std::io::Cursor;
 use std::io::{Read, Write};
 use std::marker::PhantomData;
 use std::mem::size_of;
+use std::path::Path;
 use std::sync::Arc;
 // ---
 use crate::common::BlockSignerParams;
-use crate::common::MsgVerification;
-use crate::common::SeqNum;
+use crate::common::MessageAuthentication;
+use crate::common::SeqType;
 use crate::common::VerifyResult;
 use crate::constants;
 use crate::log_graph;
@@ -45,7 +46,7 @@ pub use crate::horst::{
 };
 use crate::pub_key_store::PubKeyStore;
 use crate::pub_key_store::StoredPubKey;
-use crate::traits::{BlockSignerTrait, BlockVerifierTrait, SignatureSchemeTrait, SignedBlockTrait};
+use crate::traits::{MessageSignerTrait, MessageVerifierTrait, FtsSchemeTrait, SignedBlockTrait};
 use crate::utils;
 use crate::utils::UnixTimestamp;
 #[allow(unused_imports)]
@@ -127,7 +128,7 @@ pub struct SignedBlock<Signature: Serialize, PublicKey: Serialize + IntoFromByte
     pub data: Vec<u8>,
     pub signature: Signature,
     pub pub_keys: Vec<PubKeyTransportCont<PublicKey>>,
-    pub seq: SeqNum,
+    pub seq: SeqType,
 }
 
 impl<Signature: Serialize, PublicKey: Serialize + IntoFromBytes> SignedBlockTrait
@@ -250,7 +251,7 @@ pub struct KeyLayers<const T: usize, const N: usize> {
     /// The number of signs before the layer 0 can be used again
     until_top: usize,
     /// A sequence number of the next block to sign.
-    next_seq: SeqNum,
+    next_seq: SeqType,
     /// A number of signatures that one keypair can generate.
     key_lifetime: usize,
     /// A number of certificates to keep per layer.
@@ -394,7 +395,7 @@ pub struct BlockSigner<
     params: BlockSignerParams,
     rng: CsPrng,
     layers: KeyLayers<T, TREE_HASH_SIZE>,
-    pks: PubKeyStore<<Self as BlockSignerTrait>::PublicKey>,
+    pks: PubKeyStore<<Self as MessageSignerTrait>::PublicKey>,
     distr: DiscreteDistribution,
     _x: PhantomData<(MsgHashFn, TreeHashFn)>,
 }
@@ -439,9 +440,7 @@ impl<
     }
 
     fn store_state(&mut self) {
-        create_dir_all(&self.params.id_filename).expect("!");
         let filepath = &self.params.id_filename;
-
         let mut file = File::create(filepath).expect("The file should be writable!");
 
         let rng_bytes = serialize(&self.rng).expect("!");
@@ -525,8 +524,8 @@ impl<
 
     fn new_keypair(
         &mut self,
-    ) -> KeyPair<<Self as BlockSignerTrait>::SecretKey, <Self as BlockSignerTrait>::PublicKey> {
-        <Self as BlockSignerTrait>::Signer::gen_key_pair(&mut self.rng)
+    ) -> KeyPair<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey> {
+        <Self as MessageSignerTrait>::Signer::gen_key_pair(&mut self.rng)
     }
 
     fn next_key(
@@ -582,7 +581,7 @@ impl<
         CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
         MsgHashFn: Digest + Debug,
         TreeHashFn: Digest + Debug,
-    > BlockSignerTrait
+    > MessageSignerTrait
     for BlockSigner<
         K,
         TAU,
@@ -608,10 +607,10 @@ impl<
         TreeHashFn,
     >;
 
-    type SecretKey = <Self::Signer as SignatureSchemeTrait>::SecretKey;
-    type PublicKey = <Self::Signer as SignatureSchemeTrait>::PublicKey;
-    type Signature = <Self::Signer as SignatureSchemeTrait>::Signature;
-    type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
+    type SecretKey = <Self::Signer as FtsSchemeTrait>::SecretKey;
+    type PublicKey = <Self::Signer as FtsSchemeTrait>::PublicKey;
+    type Signature = <Self::Signer as FtsSchemeTrait>::Signature;
+    type SignedMessage = SignedBlock<Self::Signature, Self::PublicKey>;
 
     /// Constructs and initializes a block signer with the given parameters.
     fn new(params: BlockSignerParams) -> Self {
@@ -626,6 +625,12 @@ impl<
                 info!(tag: "sender", "No existing ID found, creating a new one.");
             }
         };
+
+    	let directory_path = Path::new(&params.id_filename).parent();
+		if let Some(x) = directory_path {
+			create_dir_all(x).expect("The directory must be created!");
+		}
+
         let num_layers = params.key_dist.len();
         info!(tag: "sender",
             "Creating new `BlockSigner` with seed {} and {} layers of keys.",
@@ -666,7 +671,7 @@ impl<
         new_inst
     }
 
-    fn sign(&mut self, data: Vec<u8>, seq: SeqNum) -> Result<Self::SignedBlock, Error> {
+    fn sign(&mut self, data: Vec<u8>, seq: SeqType) -> Result<Self::SignedMessage, Error> {
         let start = utils::start();
         let (sk, pub_keys) = self.next_key();
         utils::stop("\t\tBlockSigner::next_key()", start);
@@ -709,7 +714,7 @@ impl<
             seq,
         })
     }
-    fn next_seq(&mut self) -> SeqNum {
+    fn next_seq(&mut self) -> SeqType {
         self.layers.next_seq += 1;
         self.layers.next_seq
     }
@@ -725,7 +730,7 @@ impl<
         CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
         MsgHashFn: Digest + Debug,
         TreeHashFn: Digest + Debug,
-    > BlockVerifierTrait
+    > MessageVerifierTrait
     for BlockSigner<
         K,
         TAU,
@@ -751,10 +756,10 @@ impl<
         TreeHashFn,
     >;
 
-    type SecretKey = <Self::Signer as SignatureSchemeTrait>::SecretKey;
-    type PublicKey = <Self::Signer as SignatureSchemeTrait>::PublicKey;
-    type Signature = <Self::Signer as SignatureSchemeTrait>::Signature;
-    type SignedBlock = SignedBlock<Self::Signature, Self::PublicKey>;
+    type SecretKey = <Self::Signer as FtsSchemeTrait>::SecretKey;
+    type PublicKey = <Self::Signer as FtsSchemeTrait>::PublicKey;
+    type Signature = <Self::Signer as FtsSchemeTrait>::Signature;
+    type SignedMessage = SignedBlock<Self::Signature, Self::PublicKey>;
 
     /// Constructs and initializes a block signer with the given parameters.
     fn new(params: BlockSignerParams) -> Self {
@@ -771,6 +776,11 @@ impl<
             None => info!(tag: "receiver", "No existing ID found, creating a new one."),
         };
         info!(tag: "receiver", "Creating new `BlockVerifier`.");
+		let directory_path = Path::new(&params.id_filename).parent();
+		if let Some(x) = directory_path {
+			create_dir_all(x).expect("The directory must be created!");
+		}
+
         let new_inst = BlockSigner {
             params,
             rng: CsPrng::seed_from_u64(0),                  //< Not used
@@ -787,7 +797,7 @@ impl<
     }
 
     fn verify(&mut self, data: Vec<u8>) -> Result<VerifyResult, Error> {
-        let signed_block = match Self::SignedBlock::from_network_bytes(data) {
+        let signed_block = match Self::SignedMessage::from_network_bytes(data) {
             Ok(x) => x,
             Err(_) => return Err(Error::new(constants::DESER_FAILED)),
         };
@@ -818,7 +828,7 @@ impl<
         // Read the metadata from the message
         let msg = signed_block.data;
 
-        let mut verification = MsgVerification::Unverified; //< By default it's unverified
+        let mut verification = MessageAuthentication::Unverified; //< By default it's unverified
 
         // Get the pubkey FROM THE MESSAGE thath this packet SHOULD be signed with
         let verify_hint_key = signed_block.pub_keys.first().expect("Should be there!");
@@ -859,7 +869,7 @@ impl<
             if Self::Signer::verify(&to_verify, &signed_block.signature, &key_cont.key) {
                 trace!(tag: "receiver", "Verified with key: {key_cont:?}");
 
-                verification = MsgVerification::Certified(sender_id.clone());
+                verification = MessageAuthentication::Certified(sender_id.clone());
 
                 // Store all the certified PKs into the graph
                 self.pks.store_pks_for_identity(
@@ -880,7 +890,7 @@ impl<
                     .clone();
                 if let Some(key_id) = &key_cont.id {
                     if key_id == &sender_id {
-                        verification = MsgVerification::Verified(sender_id.clone());
+                        verification = MessageAuthentication::Authenticated(sender_id.clone());
                     }
                 }
 

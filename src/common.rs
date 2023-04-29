@@ -22,7 +22,7 @@ pub type PortNumber = u16;
 pub type FragmentId = u64;
 pub type MsgSignPubkeysChecksum = u64;
 pub type FragmentOffset = u32;
-pub type SeqNum = u64;
+pub type SeqType = u64;
 pub type SenderId = u64;
 
 pub const LOGS_DIR: &str = "logs/";
@@ -51,22 +51,22 @@ pub struct Fragment {
 /// Enum describing the states of message verification that can happen.
 ///
 #[derive(Debug)]
-pub enum MsgVerification {
-    /// Not send by the target identity nor someone certified by it.
+pub enum MessageAuthentication {
+    /// The message was not send by the target identity nor by identity certified by it.
     Unverified,
-    /// Send by someone who has been certified by the target identity (not proved to be the identity itself).
+    /// The message was sent by the identity certified by the target identity (not proved to be the identity itself).
     Certified(SenderIdentity),
-    /// Proved that the target identity signed the message.
-    Verified(SenderIdentity),
+    /// It is proved that the target identity sent the message.
+    Authenticated(SenderIdentity),
 }
 
 /// The error must be printable.
-impl fmt::Display for MsgVerification {
+impl fmt::Display for MessageAuthentication {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MsgVerification::Verified(x) => write!(f, "Verified({:#?})", x.petnames),
-            MsgVerification::Certified(x) => write!(f, "Certified({:#?})", x.petnames),
-            MsgVerification::Unverified => write!(f, "Unverified"),
+            MessageAuthentication::Authenticated(x) => write!(f, "Authenticated({:#?})", x.petnames),
+            MessageAuthentication::Certified(x) => write!(f, "Certified({:#?})", x.petnames),
+            MessageAuthentication::Unverified => write!(f, "Unverified"),
         }
     }
 }
@@ -74,8 +74,8 @@ impl fmt::Display for MsgVerification {
 #[derive(Debug)]
 pub struct VerifyResult {
     pub msg: Vec<u8>,
-    pub seq: SeqNum,
-    pub verification: MsgVerification,
+    pub seq: SeqType,
+    pub verification: MessageAuthentication,
     /// A hash computed as a combination of three parts (msg, signature, pubkeys).
     pub hash: MsgSignPubkeysChecksum,
 }
@@ -105,6 +105,7 @@ impl PartialEq for VerifyResult {
 ///
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
+	/// A filename where the identity will be serialized.
     pub id_dir: String,
     pub id_filename: String,
     pub logs_dir: String,
@@ -119,7 +120,7 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MsgMetadata {
     /// The sequence number of this message.
-    pub seq: SeqNum,
+    pub seq: SeqType,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -139,7 +140,7 @@ pub struct BlockSignerParams {
     pub key_dist: Vec<Vec<usize>>,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord, Clone)]
+#[derive(Debug, Hash, Serialize, Deserialize, PartialOrd, Ord, Clone)]
 pub struct SenderIdentity {
     pub ids: Vec<u64>,
     pub petnames: Vec<String>,
@@ -147,6 +148,14 @@ pub struct SenderIdentity {
     pub alive: bool,
 	pub cert_window: Option<usize>,
 }
+
+impl PartialEq for SenderIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        self.ids == other.ids
+    }
+}
+
+impl Eq for SenderIdentity {}
 
 impl SenderIdentity {
     pub fn new(id: SenderId, petname: String) -> Self {
@@ -164,15 +173,15 @@ impl SenderIdentity {
     }
 }
 
-pub struct ReceivedBlock {
-    pub data: Vec<u8>,
-    pub sender: MsgVerification,
-    pub seq: SeqNum,
+pub struct ReceivedMessage {
+    pub message: Vec<u8>,
+    pub authentication: MessageAuthentication,
+    pub seq: SeqType,
 }
 
-impl ReceivedBlock {
-    pub fn new(data: Vec<u8>, sender: MsgVerification, seq: SeqNum) -> Self {
-        ReceivedBlock { data, sender, seq }
+impl ReceivedMessage {
+    pub fn new(data: Vec<u8>, sender: MessageAuthentication, seq: SeqType) -> Self {
+        ReceivedMessage { message: data, authentication: sender, seq }
     }
 }
 

@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
 use crate::merkle_tree::MerkleTree;
-use crate::traits::{IntoFromBytes, KeyPair, PublicKeyBounds, SignatureSchemeTrait};
+use crate::traits::{IntoFromBytes, KeyPair, PublicKeyBounds, FtsSchemeTrait};
 use crate::utils;
 
 pub type HorstKeypair<const T: usize, const N: usize> =
@@ -286,7 +286,7 @@ impl<
         CsPrng: CryptoRng + SeedableRng + RngCore,
         MsgHashFn: Digest,
         TreeHashFn: Digest,
-    > SignatureSchemeTrait
+    > FtsSchemeTrait
     for HorstSigScheme<
         K,
         TAU,

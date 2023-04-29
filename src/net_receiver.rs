@@ -120,13 +120,13 @@ impl FragmentedBlock {
 }
 
 #[derive(Debug)]
-pub struct FragmentedBlocks {
+pub struct FragmentedPieces {
     blocks: HashMap<FragmentId, FragmentedBlock>,
     // ---
     last_printed: SystemTime,
 }
 
-impl fmt::Display for FragmentedBlocks {
+impl fmt::Display for FragmentedPieces {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut str = String::new();
 
@@ -138,9 +138,9 @@ impl fmt::Display for FragmentedBlocks {
     }
 }
 
-impl FragmentedBlocks {
+impl FragmentedPieces {
     pub fn new() -> Self {
-        FragmentedBlocks {
+        FragmentedPieces {
             blocks: HashMap::new(),
             last_printed: SystemTime::now(),
         }
@@ -196,7 +196,7 @@ pub struct NetReceiverParams {
 pub struct NetReceiver {
     params: NetReceiverParams,
     rt: Runtime,
-    blocks: FragmentedBlocks,
+    blocks: FragmentedPieces,
     rx: std::sync::mpsc::Receiver<Vec<u8>>,
 }
 
@@ -272,7 +272,7 @@ impl NetReceiver {
         NetReceiver {
             params,
             rt,
-            blocks: FragmentedBlocks::new(),
+            blocks: FragmentedPieces::new(),
             rx,
         }
     }
