@@ -21,7 +21,7 @@ use crate::common::{BlockSignerParams, Error, ReceivedMessage, SeqType, VerifyRe
 ///
 
 pub trait Key {
-	fn data(&self) -> &[u8];
+    fn data(&self) -> &[u8];
 }
 
 /// The trait bounds we appply on a `PublicKey` generic type.
@@ -126,14 +126,10 @@ pub trait MessageVerifierTrait {
 ///
 pub trait FtsSchemeTrait {
     type CsPrng: CryptoRng + SeedableRng + RngCore;
-    type MsgHashFn: Digest;
     type TreeHashFn: Digest;
     type SecretKey;
     type PublicKey;
     type Signature;
-
-    type MsgHashBlock;
-    type TreeHashBlock;
 
     ///
     /// Checks the configured parameters. It is recommended to do the chceck during the initialization.

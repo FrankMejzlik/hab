@@ -246,12 +246,12 @@ impl NetReceiver {
                 }
                 // Else use network as a source
                 else {
-					info!(tag: "receiver", "Blocking on {}", socket.local_addr().unwrap());
+                    info!(tag: "receiver", "Blocking on {}", socket.local_addr().unwrap());
                     match socket.recv_from(&mut buf) {
                         Ok(x) => {
-							info!(tag: "receiver", "Received {} bytes from '{}'", x.0, x.1);
-							x.0
-						},
+                            info!(tag: "receiver", "Received {} bytes from '{}'", x.0, x.1);
+                            x.0
+                        }
                         Err(e) => {
                             warn!(tag: "receiver", "Failed to receive the datagram! ERROR: {}!",e);
                             0

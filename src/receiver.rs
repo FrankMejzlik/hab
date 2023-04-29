@@ -4,9 +4,9 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::sync::mpsc;
 // ---
 // ---
 use crate::common::{BlockSignerParams, Error, ReceivedMessage, SenderIdentity, SeqType};
@@ -20,18 +20,18 @@ use crate::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
 pub struct ReceiverParams {
-	/// A filename where the identity will be serialized.
+    /// A filename where the identity will be serialized.
     pub id_filename: String,
-	/// Maximum time to delay the delivery of a piece if subsequent pieces are already received.
+    /// Maximum time to delay the delivery of a piece if subsequent pieces are already received.
     pub delivery_delay: Duration,
-	/// If this receiver should also re-send the received pieces.
-	pub distribute: Option<String>,
-	/// The IP address of the target sender.
+    /// If this receiver should also re-send the received pieces.
+    pub distribute: Option<String>,
+    /// The IP address of the target sender.
     pub target_addr: String,
-	/// The name of the target sender (the petname).
+    /// The name of the target sender (the petname).
     pub target_name: String,
-	/// A flag that indicates if the application should run or terminate.
-	pub running: Arc<AtomicBool>,
+    /// A flag that indicates if the application should run or terminate.
+    pub running: Arc<AtomicBool>,
     /// An alternative output destination instead of a network (useful for testing).
     pub alt_input: Option<mpsc::Receiver<Vec<u8>>>,
 }
@@ -54,8 +54,8 @@ impl<BlockVerifier: MessageVerifierTrait + std::marker::Send> Receiver<BlockVeri
             target_petname: params.target_name.clone(),
             pre_cert: None,
             max_piece_size: 0, //< Not used
-			key_lifetime: 0, //< Not used
-            key_dist: vec![], //< Not used
+            key_lifetime: 0,   //< Not used
+            key_dist: vec![],  //< Not used
         };
         let verifier = Arc::new(Mutex::new(BlockVerifier::new(block_signer_params)));
 

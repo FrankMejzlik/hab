@@ -64,7 +64,9 @@ pub enum MessageAuthentication {
 impl fmt::Display for MessageAuthentication {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MessageAuthentication::Authenticated(x) => write!(f, "Authenticated({:#?})", x.petnames),
+            MessageAuthentication::Authenticated(x) => {
+                write!(f, "Authenticated({:#?})", x.petnames)
+            }
             MessageAuthentication::Certified(x) => write!(f, "Certified({:#?})", x.petnames),
             MessageAuthentication::Unverified => write!(f, "Unverified"),
         }
@@ -105,7 +107,7 @@ impl PartialEq for VerifyResult {
 ///
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
-	/// A filename where the identity will be serialized.
+    /// A filename where the identity will be serialized.
     pub id_dir: String,
     pub id_filename: String,
     pub logs_dir: String,
@@ -146,7 +148,7 @@ pub struct SenderIdentity {
     pub petnames: Vec<String>,
     // If true, the identity still has some nodes in the identity graph and has chance to be re-authenticated.
     pub alive: bool,
-	pub cert_window: Option<usize>,
+    pub cert_window: Option<usize>,
 }
 
 impl PartialEq for SenderIdentity {
@@ -163,7 +165,7 @@ impl SenderIdentity {
             ids: vec![id],
             petnames: vec![petname],
             alive: false,
-			cert_window: None,
+            cert_window: None,
         }
     }
     pub fn merge(&mut self, mut other: SenderIdentity) {
@@ -181,7 +183,11 @@ pub struct ReceivedMessage {
 
 impl ReceivedMessage {
     pub fn new(data: Vec<u8>, sender: MessageAuthentication, seq: SeqType) -> Self {
-        ReceivedMessage { message: data, authentication: sender, seq }
+        ReceivedMessage {
+            message: data,
+            authentication: sender,
+            seq,
+        }
     }
 }
 

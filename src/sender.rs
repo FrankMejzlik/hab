@@ -3,38 +3,38 @@
 //!
 
 use std::sync::atomic::AtomicBool;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
-use std::sync::mpsc;
 // ---
 // ---
 use crate::common::{BlockSignerParams, Error};
 use crate::net_sender::{NetSender, NetSenderParams};
-use crate::traits::{MessageSignerTrait, IntoFromBytes, SenderTrait};
+use crate::traits::{IntoFromBytes, MessageSignerTrait, SenderTrait};
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
 pub struct SenderParams {
-	/// A filename where the identity will be serialized.
+    /// A filename where the identity will be serialized.
     pub id_filename: String,
-	/// A seed for the pseudo-random number generator.
+    /// A seed for the pseudo-random number generator.
     pub seed: u64,
-	/// A distribution for key selection algorithm.
+    /// A distribution for key selection algorithm.
     pub key_dist: Vec<Vec<usize>>,
-	/// Number of keys to certificate in advance.
+    /// Number of keys to certificate in advance.
     pub pre_cert: usize,
-	/// Number of signatures one key can sign.
+    /// Number of signatures one key can sign.
     pub key_lifetime: usize,
-	/// A maximum byte size of one piece.
+    /// A maximum byte size of one piece.
     pub max_piece_size: usize,
-	/// A maximum byte size of one datagram.
+    /// A maximum byte size of one datagram.
     pub datagram_size: usize,
-	/// A maximum time between two heartbeats from the given receiver.
+    /// A maximum time between two heartbeats from the given receiver.
     pub receiver_lifetime: Duration,
-	/// An address and port where the sender will be listening for heartbeats.
-	pub sender_addr: String,
-	/// A flag that indicates if the application should run or terminate.
+    /// An address and port where the sender will be listening for heartbeats.
+    pub sender_addr: String,
+    /// A flag that indicates if the application should run or terminate.
     pub running: Arc<AtomicBool>,
     /// An alternative output destination instead of a network (useful for testing).
     pub alt_output: Option<mpsc::Sender<Vec<u8>>>,

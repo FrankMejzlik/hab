@@ -143,19 +143,19 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         sender_id: &mut SenderIdentity,
         seq: SeqType,
     ) {
-		let mut width = 0;
+        let mut width = 0;
         for kw in pub_keys.iter() {
             // Get a key to store
             let key_to_store = StoredPubKey::new_with_certified(kw, sender_id.clone(), seq);
 
-			if kw.layer == 0 {
-				width += 1;
-			}
+            if kw.layer == 0 {
+                width += 1;
+            }
 
             // Insert the key to the graph
             self.insert_key(cert_by_key_idx, key_to_store);
         }
-		sender_id.cert_window = Some(width);
+        sender_id.cert_window = Some(width);
     }
 
     pub fn get_key(&self, key: &PublicKey, target_id: &SenderIdentity) -> Option<NodeIndex> {
@@ -353,7 +353,10 @@ impl<PublicKey: PublicKeyBounds> PubKeyStore<PublicKey> {
         }
 
         for layer in hist_layers.iter_mut() {
-            let to_drain = std::cmp::max(0, layer.len() as i64 - (2 * target_id.cert_window.unwrap() - 1) as i64) as usize;
+            let to_drain = std::cmp::max(
+                0,
+                layer.len() as i64 - (2 * target_id.cert_window.unwrap() - 1) as i64,
+            ) as usize;
             let to_delete = layer.drain(..to_drain);
 
             for (_, idx) in to_delete {

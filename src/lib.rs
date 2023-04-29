@@ -22,4 +22,4 @@ pub use block_signer::BlockSigner;
 pub use common::Config;
 pub use receiver::{Receiver, ReceiverParams};
 pub use sender::{Sender, SenderParams};
-pub use traits::{ReceiverTrait, SenderTrait, FtsSchemeTrait};
+pub use traits::{FtsSchemeTrait, ReceiverTrait, SenderTrait};

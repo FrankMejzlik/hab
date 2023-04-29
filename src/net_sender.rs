@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::io::Read;
 use std::io::Write;
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::sync::mpsc::Sender;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -77,7 +77,7 @@ impl NetSender {
             params.running.clone(),
             subscribers.clone(),
             params.subscriber_lifetime.as_millis(),
-            params.datagram_size*2,
+            params.datagram_size * 2,
         ));
 
         NetSender {

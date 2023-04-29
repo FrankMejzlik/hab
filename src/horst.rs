@@ -14,7 +14,7 @@
 //!         The number of leaves in the tree (i.e. number of items in the set we're choosing from) is 2^TAU.
 //!
 //! ## Hash functions
-//! * `MsgHashFn` - `F: {0, 1}* -> {0, 1}^{K * log_2(T)}`
+//! * `TreeHashFn` - `F: {0, 1}* -> {0, 1}^{K * log_2(T)}`
 //! A hash function for hasing a message of arbitrary length & hashing the N-bit secrets into N-bit output.
 //!     
 //!
@@ -39,11 +39,8 @@ use serde::{Deserialize, Serialize};
 use sha3::Digest;
 // ---
 use crate::merkle_tree::MerkleTree;
-use crate::traits::{IntoFromBytes, KeyPair, PublicKeyBounds, FtsSchemeTrait, Key};
+use crate::traits::{FtsSchemeTrait, IntoFromBytes, Key, KeyPair, PublicKeyBounds};
 use crate::utils;
-
-pub type HorstKeypair<const T: usize, const N: usize> =
-    KeyPair<HorstSecretKey<T, N>, HorstPublicKey<N>>;
 
 impl<const T: usize, const N: usize> Display for KeyPair<HorstSecretKey<T, N>, HorstPublicKey<N>> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
@@ -56,19 +53,19 @@ impl<const T: usize, const N: usize> Display for KeyPair<HorstSecretKey<T, N>, H
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct HorstSecretKey<const T: usize, const TREE_HASH_SIZE: usize> {
+pub struct HorstSecretKey<const T: usize, const N: usize> {
     data: Vec<Vec<u8>>,
-    tree: Box<MerkleTree<TREE_HASH_SIZE>>,
+    tree: Box<MerkleTree<N>>,
 }
-impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SIZE> {
+impl<const T: usize, const N: usize> HorstSecretKey<T, N> {
     fn new<TreeHash: Digest, CsPrng: CryptoRng + SeedableRng + RngCore>(rng: &mut CsPrng) -> Self {
         let start = utils::start();
 
         // Allocate the memory
         let mut data = vec![
             unsafe {
-                let mut v = Vec::with_capacity(TREE_HASH_SIZE);
-                v.set_len(TREE_HASH_SIZE);
+                let mut v = Vec::with_capacity(N);
+                v.set_len(N);
                 v
             };
             T
@@ -90,11 +87,11 @@ impl<const T: usize, const TREE_HASH_SIZE: usize> HorstSecretKey<T, TREE_HASH_SI
         HorstSecretKey { data, tree }
     }
 
-    fn get(&self, idx: usize) -> [u8; TREE_HASH_SIZE] {
+    fn get(&self, idx: usize) -> [u8; N] {
         self.data[idx]
             .as_slice()
             .try_into()
-            .expect("The size should be `TREE_HASH_SIZE`!")
+            .expect("The size should be `N`!")
     }
 }
 
@@ -253,76 +250,54 @@ impl<const N: usize, const K: usize, const TAUPLUS: usize> Display
 
 #[derive(Default)]
 pub struct HorstSigScheme<
+    const N: usize,
     const K: usize,
     const TAU: usize,
     const TAUPLUS: usize,
     const T: usize,
-    const MSG_HASH_SIZE: usize,
-    const TREE_HASH_SIZE: usize,
     CsPrng: CryptoRng + SeedableRng + RngCore,
-    MsgHashFn: Digest,
     TreeHashFn: Digest,
 > {
     // To determine the type variance: https://stackoverflow.com/a/71276732
-    _p: PhantomData<(CsPrng, MsgHashFn, TreeHashFn)>,
+    _p: PhantomData<(CsPrng, TreeHashFn)>,
 }
 
 impl<
+        const N: usize,
         const K: usize,
         const TAU: usize,
         const TAUPLUS: usize,
         const T: usize,
-        const MSG_HASH_SIZE: usize,
-        const TREE_HASH_SIZE: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore,
-        MsgHashFn: Digest,
         TreeHashFn: Digest,
-    >
-    HorstSigScheme<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
+    > HorstSigScheme<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>
 {
 }
 
 impl<
+        const N: usize,
         const K: usize,
         const TAU: usize,
         const TAUPLUS: usize,
         const T: usize,
-        const MSG_HASH_SIZE: usize,
-        const TREE_HASH_SIZE: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore,
-        MsgHashFn: Digest,
         TreeHashFn: Digest,
-    > FtsSchemeTrait
-    for HorstSigScheme<
-        K,
-        TAU,
-        TAUPLUS,
-        T,
-        MSG_HASH_SIZE,
-        TREE_HASH_SIZE,
-        CsPrng,
-        MsgHashFn,
-        TreeHashFn,
-    >
+    > FtsSchemeTrait for HorstSigScheme<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>
 {
     type CsPrng = CsPrng;
-    type MsgHashFn = MsgHashFn;
     type TreeHashFn = TreeHashFn;
-    type SecretKey = HorstSecretKey<T, TREE_HASH_SIZE>;
-    type PublicKey = HorstPublicKey<TREE_HASH_SIZE>;
-    type Signature = HorstSignature<TREE_HASH_SIZE, K, TAUPLUS>;
-
-    type MsgHashBlock = [u8; MSG_HASH_SIZE];
-    type TreeHashBlock = [u8; TREE_HASH_SIZE];
+    type SecretKey = HorstSecretKey<T, N>;
+    type PublicKey = HorstPublicKey<N>;
+    type Signature = HorstSignature<N, K, TAUPLUS>;
 
     fn check_params() -> bool {
-        println!("{MSG_HASH_SIZE}, {}", <MsgHashFn as Digest>::output_size());
-        if MSG_HASH_SIZE != <MsgHashFn as Digest>::output_size() {
+        println!("{N}, {}", <TreeHashFn as Digest>::output_size());
+        if N != <TreeHashFn as Digest>::output_size() {
             error!("The parameters do not match the size of a message hash function output!");
             return false;
         }
 
-        if TREE_HASH_SIZE != <TreeHashFn as Digest>::output_size() {
+        if N != <TreeHashFn as Digest>::output_size() {
             error!("The parameter do not match the size of the a tree hash function output!");
             return false;
         }
@@ -332,7 +307,7 @@ impl<
             return false;
         }
 
-        if (MSG_HASH_SIZE * 8) % TAU != 0 {
+        if (N * 8) % TAU != 0 {
             error!("The bit output size of the message hash function must be multiple of TAU because we will divide it into segments of TAU-bit length.");
             return false;
         };
@@ -341,19 +316,19 @@ impl<
     }
 
     fn sign(msg: &[u8], secret_key: &Self::SecretKey) -> Self::Signature {
-        let mut msg_hash = [0; MSG_HASH_SIZE];
-        msg_hash.copy_from_slice(&Self::MsgHashFn::digest(msg)[..MSG_HASH_SIZE]);
+        let mut msg_hash = [0; N];
+        msg_hash.copy_from_slice(&Self::TreeHashFn::digest(msg)[..N]);
 
         let tree = secret_key.tree.as_ref();
 
-        let mut signature = [[[0_u8; TREE_HASH_SIZE]; TAUPLUS]; K];
+        let mut signature = [[[0_u8; N]; TAUPLUS]; K];
 
         // Get segment indices
-        let indices = utils::get_segment_indices::<K, MSG_HASH_SIZE, TAU>(&msg_hash);
+        let indices = utils::get_segment_indices::<K, N, TAU>(&msg_hash);
         // debug!("indices: {:?}", indices);
 
         for (i, c_i) in indices.into_iter().enumerate() {
-            let mut element = [[0_u8; TREE_HASH_SIZE]; TAUPLUS];
+            let mut element = [[0_u8; N]; TAUPLUS];
             let sk_c_i = secret_key.get(c_i);
             let auth = tree.get_auth_path(c_i);
             assert_eq!(auth.len(), TAU, "Wrong size of auth path!");
@@ -374,11 +349,11 @@ impl<
 
     fn verify(msg: &[u8], signature: &Self::Signature, pk: &Self::PublicKey) -> bool {
         // Hash the message
-        let mut msg_hash = [0; MSG_HASH_SIZE];
-        msg_hash.copy_from_slice(&Self::MsgHashFn::digest(msg)[..MSG_HASH_SIZE]);
+        let mut msg_hash = [0; N];
+        msg_hash.copy_from_slice(&Self::TreeHashFn::digest(msg)[..N]);
 
         // Get segment indices
-        let indices = utils::get_segment_indices::<K, MSG_HASH_SIZE, TAU>(&msg_hash);
+        let indices = utils::get_segment_indices::<K, N, TAU>(&msg_hash);
         // debug!("indices: {:?}", indices);
 
         for (i, segment) in signature.data.iter().enumerate() {
@@ -410,7 +385,7 @@ impl<
             }
 
             // Check the equality with the PK
-            let act_root = &parent_hash.as_slice()[..TREE_HASH_SIZE];
+            let act_root = &parent_hash.as_slice()[..N];
             if act_root != pk.data {
                 return false;
             }
@@ -441,7 +416,7 @@ mod tests {
     const SEED: u64 = 42;
 
     /// Size of the hashes in a Merkle tree
-    const N: usize = 512 / 8;
+    //const N: usize = 512 / 8;
     /// Number of SK segments in signature
     const K: usize = 32;
     /// Depth of the Merkle tree (without the root layer)
@@ -452,29 +427,15 @@ mod tests {
     type CsPrng = ChaCha20Rng;
 
     // --- Hash functions ---
-    // Hash fn for message hashing. msg: * -> N
-    type MsgHashFn = Sha3_512;
-    // Hash fn for tree & secret hashing. sk: 2N -> N & tree: N -> N
     type TreeHashFn = Sha3_512;
 
     // ---
 
     const TAUPLUS: usize = TAU + 1;
     const T: usize = 2_usize.pow(TAU as u32);
-    const MSG_HASH_SIZE: usize = (K * TAU) / 8;
-    const TREE_HASH_SIZE: usize = MSG_HASH_SIZE;
+    const N: usize = (K * TAU) / 8;
 
-    type Signer = HorstSigScheme<
-        K,
-        TAU,
-        TAUPLUS,
-        T,
-        MSG_HASH_SIZE,
-        TREE_HASH_SIZE,
-        CsPrng,
-        MsgHashFn,
-        TreeHashFn,
-    >;
+    type Signer = HorstSigScheme<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>;
 
     type Signature = HorstSignature<N, K, TAUPLUS>;
 

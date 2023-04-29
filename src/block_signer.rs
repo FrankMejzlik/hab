@@ -40,14 +40,13 @@ use xxhash_rust::xxh3::xxh3_64;
 use crate::common::DiscreteDistribution;
 use crate::common::Error;
 use crate::common::SenderIdentity;
-use crate::horst::HorstPublicKey;
 pub use crate::horst::{
-    HorstKeypair, HorstPublicKey as PublicKey, HorstSecretKey as SecretKey, HorstSigScheme,
+    HorstPublicKey as PublicKey, HorstSecretKey as SecretKey, HorstSigScheme,
     HorstSignature as Signature,
 };
 use crate::pub_key_store::PubKeyStore;
 use crate::pub_key_store::StoredPubKey;
-use crate::traits::{MessageSignerTrait, MessageVerifierTrait, FtsSchemeTrait, SignedBlockTrait};
+use crate::traits::{FtsSchemeTrait, MessageSignerTrait, MessageVerifierTrait, SignedBlockTrait};
 use crate::utils;
 use crate::utils::UnixTimestamp;
 #[allow(unused_imports)]
@@ -64,7 +63,7 @@ struct KeyPairStoreCont<SecretKey, PublicKey> {
     cert_count: usize,
 }
 
-impl<SecretKey, PublicKey:PublicKeyBounds> Display for KeyPairStoreCont<SecretKey, PublicKey> {
+impl<SecretKey, PublicKey: PublicKeyBounds> Display for KeyPairStoreCont<SecretKey, PublicKey> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
             f,
@@ -240,7 +239,7 @@ impl<Signature: Serialize + IntoFromBytes, PublicKey: Serialize + IntoFromBytes>
 }
 
 #[derive(Serialize, Debug, Deserialize, PartialEq)]
-pub struct KeyLayers<SecretKey, PublicKey:PublicKeyBounds> {
+pub struct KeyLayers<SecretKey, PublicKey: PublicKeyBounds> {
     /// The key containers in their layers (indices).
     data: Vec<VecDeque<Arc<KeyPairStoreCont<SecretKey, PublicKey>>>>,
     /// List of seq number when the key layer can be used once again (default 0)
@@ -259,7 +258,7 @@ pub struct KeyLayers<SecretKey, PublicKey:PublicKeyBounds> {
     cert_window: usize,
 }
 
-impl<SecretKey, PublicKey:PublicKeyBounds> KeyLayers<SecretKey, PublicKey> {
+impl<SecretKey, PublicKey: PublicKeyBounds> KeyLayers<SecretKey, PublicKey> {
     pub fn new(
         depth: usize,
         key_lifetime: usize,
@@ -361,7 +360,7 @@ impl<SecretKey, PublicKey:PublicKeyBounds> KeyLayers<SecretKey, PublicKey> {
     }
 }
 
-impl<SecretKey, PublicKey:PublicKeyBounds> Display for KeyLayers<SecretKey, PublicKey> {
+impl<SecretKey, PublicKey: PublicKeyBounds> Display for KeyLayers<SecretKey, PublicKey> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         let mut res = String::new();
 
@@ -383,36 +382,32 @@ impl<SecretKey, PublicKey:PublicKeyBounds> Display for KeyLayers<SecretKey, Publ
 
 #[derive(Debug)]
 pub struct BlockSigner<
+    const N: usize,
     const K: usize,
     const TAU: usize,
     const TAUPLUS: usize,
     const T: usize,
-    const MSG_HASH_SIZE: usize,
-    const TREE_HASH_SIZE: usize,
     CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-    MsgHashFn: Digest + Debug,
     TreeHashFn: Digest + Debug,
 > {
     params: BlockSignerParams,
     rng: CsPrng,
-    layers: KeyLayers<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey>,
+    layers:
+        KeyLayers<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey>,
     pks: PubKeyStore<<Self as MessageSignerTrait>::PublicKey>,
     distr: DiscreteDistribution,
-    _x: PhantomData<(MsgHashFn, TreeHashFn)>,
+    _x: PhantomData<TreeHashFn>,
 }
 
 impl<
+        const N: usize,
         const K: usize,
         const TAU: usize,
         const TAUPLUS: usize,
         const T: usize,
-        const MSG_HASH_SIZE: usize,
-        const TREE_HASH_SIZE: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-        MsgHashFn: Digest + Debug,
         TreeHashFn: Digest + Debug,
-    >
-    BlockSigner<K, TAU, TAUPLUS, T, MSG_HASH_SIZE, TREE_HASH_SIZE, CsPrng, MsgHashFn, TreeHashFn>
+    > BlockSigner<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>
 {
     fn new_id(&mut self, petname: String) -> SenderIdentity {
         let id = SenderIdentity::new(self.pks.next_id, petname);
@@ -506,9 +501,15 @@ impl<
             .expect("Failed to read state from file");
 
         let rng: CsPrng = deserialize(&rng_bytes).expect("!");
-        let layers = deserialize::<KeyLayers<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey>>(&layers_bytes).expect("!");
-        let pks =
-            deserialize::<PubKeyStore<<Self as MessageSignerTrait>::PublicKey>>(&pks_bytes).expect("!");
+        let layers = deserialize::<
+            KeyLayers<
+                <Self as MessageSignerTrait>::SecretKey,
+                <Self as MessageSignerTrait>::PublicKey,
+            >,
+        >(&layers_bytes)
+        .expect("!");
+        let pks = deserialize::<PubKeyStore<<Self as MessageSignerTrait>::PublicKey>>(&pks_bytes)
+            .expect("!");
         let distr: DiscreteDistribution = deserialize(&distr_bytes).expect("!");
         let params: BlockSignerParams = deserialize(&config_bytes).expect("!");
 
@@ -525,14 +526,20 @@ impl<
 
     fn new_keypair(
         &mut self,
-    ) -> KeyPair<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey> {
+    ) -> KeyPair<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey>
+    {
         <Self as MessageSignerTrait>::Signer::gen_key_pair(&mut self.rng)
     }
 
     fn next_key(
         &mut self,
     ) -> (
-        Arc<KeyPairStoreCont<<Self as MessageSignerTrait>::SecretKey, <Self as MessageSignerTrait>::PublicKey>>,
+        Arc<
+            KeyPairStoreCont<
+                <Self as MessageSignerTrait>::SecretKey,
+                <Self as MessageSignerTrait>::PublicKey,
+            >,
+        >,
         Vec<PubKeyTransportCont<<Self as MessageSignerTrait>::PublicKey>>,
     ) {
         // TODO: Use key pauses
@@ -573,40 +580,17 @@ impl<
 }
 
 impl<
+        const N: usize,
         const K: usize,
         const TAU: usize,
         const TAUPLUS: usize,
         const T: usize,
-        const MSG_HASH_SIZE: usize,
-        const TREE_HASH_SIZE: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-        MsgHashFn: Digest + Debug,
         TreeHashFn: Digest + Debug,
-    > MessageSignerTrait
-    for BlockSigner<
-        K,
-        TAU,
-        TAUPLUS,
-        T,
-        MSG_HASH_SIZE,
-        TREE_HASH_SIZE,
-        CsPrng,
-        MsgHashFn,
-        TreeHashFn,
-    >
+    > MessageSignerTrait for BlockSigner<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>
 {
     type Error = Error;
-    type Signer = HorstSigScheme<
-        K,
-        TAU,
-        TAUPLUS,
-        T,
-        MSG_HASH_SIZE,
-        TREE_HASH_SIZE,
-        CsPrng,
-        MsgHashFn,
-        TreeHashFn,
-    >;
+    type Signer = HorstSigScheme<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>;
 
     type SecretKey = <Self::Signer as FtsSchemeTrait>::SecretKey;
     type PublicKey = <Self::Signer as FtsSchemeTrait>::PublicKey;
@@ -627,10 +611,10 @@ impl<
             }
         };
 
-    	let directory_path = Path::new(&params.id_filename).parent();
-		if let Some(x) = directory_path {
-			create_dir_all(x).expect("The directory must be created!");
-		}
+        let directory_path = Path::new(&params.id_filename).parent();
+        if let Some(x) = directory_path {
+            create_dir_all(x).expect("The directory must be created!");
+        }
 
         let num_layers = params.key_dist.len();
         info!(tag: "sender",
@@ -722,40 +706,17 @@ impl<
 }
 
 impl<
+        const N: usize,
         const K: usize,
         const TAU: usize,
         const TAUPLUS: usize,
         const T: usize,
-        const MSG_HASH_SIZE: usize,
-        const TREE_HASH_SIZE: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned + PartialEq + Debug,
-        MsgHashFn: Digest + Debug,
         TreeHashFn: Digest + Debug,
-    > MessageVerifierTrait
-    for BlockSigner<
-        K,
-        TAU,
-        TAUPLUS,
-        T,
-        MSG_HASH_SIZE,
-        TREE_HASH_SIZE,
-        CsPrng,
-        MsgHashFn,
-        TreeHashFn,
-    >
+    > MessageVerifierTrait for BlockSigner<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>
 {
     type Error = Error;
-    type Signer = HorstSigScheme<
-        K,
-        TAU,
-        TAUPLUS,
-        T,
-        MSG_HASH_SIZE,
-        TREE_HASH_SIZE,
-        CsPrng,
-        MsgHashFn,
-        TreeHashFn,
-    >;
+    type Signer = HorstSigScheme<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>;
 
     type SecretKey = <Self::Signer as FtsSchemeTrait>::SecretKey;
     type PublicKey = <Self::Signer as FtsSchemeTrait>::PublicKey;
@@ -777,14 +738,14 @@ impl<
             None => info!(tag: "receiver", "No existing ID found, creating a new one."),
         };
         info!(tag: "receiver", "Creating new `BlockVerifier`.");
-		let directory_path = Path::new(&params.id_filename).parent();
-		if let Some(x) = directory_path {
-			create_dir_all(x).expect("The directory must be created!");
-		}
+        let directory_path = Path::new(&params.id_filename).parent();
+        if let Some(x) = directory_path {
+            create_dir_all(x).expect("The directory must be created!");
+        }
 
         let new_inst = BlockSigner {
             params,
-            rng: CsPrng::seed_from_u64(0),                  //< Not used
+            rng: CsPrng::seed_from_u64(0),           //< Not used
             layers: KeyLayers::new(0, 0, 0, vec![]), //< Not used
             pks: PubKeyStore::new(),
             distr: DiscreteDistribution::new(vec![]), //< Not used
