@@ -316,7 +316,7 @@ impl<SecretKey, PublicKey: PublicKeyBounds> KeyLayers<SecretKey, PublicKey> {
 
         let rate = self.avg_sign_rate[layer];
         if rate > 0.0 {
-            self.ready_at[layer] += rate;
+			self.ready_at[layer] = (self.next_seq - 1) as f64 + rate;
         }
 
         //
