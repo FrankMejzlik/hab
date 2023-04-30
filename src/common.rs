@@ -133,13 +133,13 @@ pub struct BlockSignerParams {
     pub id_filename: String,
     /// User-defined name of the target identity.
     pub target_petname: String,
-    /// A number of signatures that one keypair can generate.
-    pub key_lifetime: usize,
     /// A number of keys to certify forward (and backward).
     pub pre_cert: Option<usize>,
     /// A maximum byte size of payload in one piece.
     pub max_piece_size: usize,
     pub key_dist: Vec<Vec<usize>>,
+    /// A number of signatures that one keypair can generate.
+    pub key_charges: Option<usize>,
 }
 
 #[derive(Debug, Hash, Serialize, Deserialize, PartialOrd, Ord, Clone)]

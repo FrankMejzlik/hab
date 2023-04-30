@@ -585,9 +585,16 @@ impl<Signer: FtsSchemeTrait> MessageSignerTrait for BlockSigner<Signer> {
         // We generate `cert_interval` keys backward and `cert_interval` keys forward
         let cw_size = utils::calc_cert_window(params.pre_cert.unwrap());
 
+		// Choose the source of key charges. The dynamic parameter overrides the static one.
+		let key_charges = if let Some(x) = params.key_charges {
+			x
+		} else {
+			Signer::key_charges()
+		};
+
         let mut layers = KeyLayers::new(
             num_layers,
-            params.key_lifetime,
+            key_charges,
             params.pre_cert.unwrap(),
             avg_sign_rate,
         );

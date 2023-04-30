@@ -26,8 +26,6 @@ pub struct SenderParams {
     pub key_dist: Vec<Vec<usize>>,
     /// Number of keys to certificate in advance.
     pub pre_cert: usize,
-    /// Number of signatures one key can sign.
-    pub key_lifetime: usize,
     /// A maximum byte size of one piece.
     pub max_piece_size: usize,
     /// A maximum byte size of one datagram.
@@ -36,6 +34,8 @@ pub struct SenderParams {
     pub receiver_lifetime: Duration,
     /// An address and port where the sender will be listening for heartbeats.
     pub sender_addr: String,
+    /// Number of signatures one key can sign.
+    pub key_charges: Option<usize>,
     /// A flag that indicates if the application should run or terminate.
     pub running: Arc<AtomicBool>,
     /// An alternative output destination instead of a network (useful for testing).
@@ -53,7 +53,7 @@ impl<Signer: FtsSchemeTrait> Sender<Signer> {
             seed: params.seed,
             id_filename: params.id_filename.clone(),
             target_petname: String::default(), //< Not used in `Sender`
-            key_lifetime: params.key_lifetime,
+            key_charges: params.key_charges,
             pre_cert: Some(params.pre_cert),
             max_piece_size: params.max_piece_size,
             key_dist: params.key_dist.clone(),

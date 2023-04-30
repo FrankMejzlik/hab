@@ -54,7 +54,7 @@ impl<Signer: FtsSchemeTrait> Receiver<Signer> {
             target_petname: params.target_name.clone(),
             pre_cert: None,
             max_piece_size: 0, //< Not used
-            key_lifetime: 0,   //< Not used
+            key_charges: None,   //< Not used
             key_dist: vec![],  //< Not used
         };
 

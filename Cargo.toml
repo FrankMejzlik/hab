@@ -33,6 +33,7 @@ rayon = "1.5.1"
 [features]
 default = ["debug"]
 debug = []
+store_state = []
 print_times = []
 log_input_output = []
 simulate_out_of_order = []

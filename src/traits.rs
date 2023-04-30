@@ -136,6 +136,8 @@ pub trait FtsSchemeTrait {
     ///
     /// For example that the size of the hash function output matches the declared hash size.
     fn check_params() -> bool;
+	/// Returns the number of signatures one key can securely create.
+	fn key_charges() -> usize;
     fn verify(msg: &[u8], signature: &Self::Signature, pub_key: &Self::PublicKey) -> bool;
     fn sign(msg: &[u8], secret_key: &Self::SecretKey) -> Self::Signature;
     fn gen_key_pair(rng: &mut Self::CsPrng) -> KeyPair<Self::SecretKey, Self::PublicKey>;
