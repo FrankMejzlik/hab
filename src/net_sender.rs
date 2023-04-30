@@ -37,6 +37,7 @@ pub struct NetSenderParams {
     pub datagram_size: usize,
     pub subscriber_lifetime: Duration,
     pub max_piece_size: usize,
+    pub dgram_delay: Duration,
     /// An alternative output destination instread of network.
     pub alt_output: Option<Sender<Vec<u8>>>,
 }
@@ -54,6 +55,7 @@ pub struct NetSender {
     sender_socket: Arc<UdpSocket>,
     /// A table of the subscribed receivers with the UNIX timestamp of the current lifetime.
     subscribers: ActiveReceivers,
+    dgram_delay: Duration,
     // ---
     #[allow(dead_code)]
     messages: Vec<Vec<u8>>,
@@ -80,11 +82,13 @@ impl NetSender {
             params.datagram_size * 2,
         ));
 
+        let dgram_delay = params.dgram_delay;
         NetSender {
             params,
             rt,
             sender_socket,
             subscribers,
+            dgram_delay,
             messages: vec![],
         }
     }
@@ -252,7 +256,7 @@ impl NetSender {
                             {
                                 warn!(tag: "sender", "Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
                             };
-                            std::thread::sleep(Duration::from_micros(10));
+                            std::thread::sleep(self.dgram_delay);
                         }
                     }
                 }

@@ -36,6 +36,8 @@ pub struct SenderParams {
     pub sender_addr: String,
     /// Number of signatures one key can sign.
     pub key_charges: Option<usize>,
+    /// Delay between sending two datagrams.
+    pub dgram_delay: Duration,
     /// A flag that indicates if the application should run or terminate.
     pub running: Arc<AtomicBool>,
     /// An alternative output destination instead of a network (useful for testing).
@@ -66,6 +68,7 @@ impl<Signer: FtsSchemeTrait> Sender<Signer> {
             subscriber_lifetime: params.receiver_lifetime,
             datagram_size: params.datagram_size,
             max_piece_size: params.max_piece_size,
+            dgram_delay: params.dgram_delay,
             alt_output: params.alt_output.clone(),
         };
         let net_sender = NetSender::new(net_sender_params);
