@@ -31,6 +31,8 @@ pub struct ReceiverParams {
     pub target_addr: String,
     /// The name of the target sender (the petname).
     pub target_name: String,
+    /// Period for sending heartbeats to the target sender.
+    pub heartbeat_period: Duration,
     /// A flag that indicates if the application should run or terminate.
     pub running: Arc<AtomicBool>,
     /// An alternative output destination instead of a network (useful for testing).
@@ -58,6 +60,7 @@ impl<Signer: FtsSchemeTrait> Receiver<Signer> {
 
         let net_recv_params = NetReceiverParams {
             addr: params.target_addr.clone(),
+            heartbeat_period: params.heartbeat_period,
             running: params.running.clone(),
             alt_input: params.alt_input.take(),
         };

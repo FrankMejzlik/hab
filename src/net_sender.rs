@@ -277,6 +277,7 @@ impl NetSender {
     ) {
         info!(tag: "registrator_task", "Accepting heartbeats from receivers at {}...", socket.local_addr().unwrap());
 
+        // The main loop
         while running.load(Ordering::Acquire) {
             let mut buf = vec![0; buffer_size];
             let (recv, peer) = match socket.recv_from(&mut buf).await {
@@ -286,16 +287,20 @@ impl NetSender {
                     continue;
                 }
             };
-            // We expect 2 byte port as a payload
-            if recv != 1 {
-                warn!(tag: "registrator_task", "Incorect heartbeat received from '{peer}'! Received {recv} B.");
+            // We expect 2 byte magic word 0xBEAD
+            if recv != 2 {
+                warn!(tag: "registrator_task", "Incorrect heartbeat received from '{peer}'! Received {recv} B.");
                 continue;
             }
 
-            // Read the port that the receiver will listen for the data
-            let mut byte = [0; 1];
-            byte.copy_from_slice(&buf[..1]);
-            let _magic = u8::from_be_bytes(byte);
+            // Read the magic
+            let mut magic_bytes = [0; 2];
+            magic_bytes.copy_from_slice(&buf[..2]);
+
+            if magic_bytes != [0xBE, 0xAD] {
+                warn!(tag: "registrator_task", "Incorrect heartbeat received from '{peer}'! Incorrect magic word.");
+                continue;
+            }
 
             let recv_port = peer.port();
             let recv_socket = SocketAddr::new(peer.ip(), recv_port);

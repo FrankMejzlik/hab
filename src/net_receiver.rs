@@ -181,8 +181,9 @@ impl FragmentedPieces {
 #[derive(Debug)]
 pub struct NetReceiverParams {
     pub addr: String,
+    pub heartbeat_period: Duration,
     pub running: Arc<AtomicBool>,
-    /// An alternative output destination instread of network.
+    /// An alternative output destination instead of network.
     pub alt_input: Option<std::sync::mpsc::Receiver<Vec<u8>>>,
 }
 
@@ -217,6 +218,7 @@ impl NetReceiver {
         rt.spawn(Self::heartbeat_task(
             params.addr.clone(),
             params.running.clone(),
+            params.heartbeat_period,
             socket.clone(),
         ));
 
@@ -290,7 +292,12 @@ impl NetReceiver {
         }
     }
 
-    async fn heartbeat_task(addr: String, running: Arc<AtomicBool>, recv_sock: Arc<UdpSocket>) {
+    async fn heartbeat_task(
+        addr: String,
+        running: Arc<AtomicBool>,
+        period: Duration,
+        recv_sock: Arc<UdpSocket>,
+    ) {
         let addr = match SocketAddrV4::from_str(&addr) {
             Ok(x) => x,
             Err(e) => panic!("Failed to parse the address '{addr}! ERROR: {e}'"),
@@ -304,11 +311,11 @@ impl NetReceiver {
         // The task loop
         while running.load(Ordering::Acquire) {
             debug!(tag: "heartbeat_task", "Sending a heartbeat to the sender at '{addr}'...");
-            match recv_sock.send_to(&42_u8.to_be_bytes(), addr) {
+            match recv_sock.send_to(&[0xBE, 0xAD], addr) {
                 Ok(_) => (),
                 Err(e) => warn!("Failed to send a heartbeat to '{addr}'! ERROR: {e}"),
             };
-            sleep(Duration::from_secs(5)).await;
+            sleep(period).await;
         }
     }
 }
