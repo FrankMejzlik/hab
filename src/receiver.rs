@@ -35,6 +35,12 @@ pub struct ReceiverParams {
     pub heartbeat_period: Duration,
     /// A timeout after the unfinished pieces are discarded.
     pub frag_timeout: Duration,
+    /// Delay between sending two datagrams.
+    pub dgram_delay: Duration,
+    /// A maximum time between two heartbeats from the given receiver.
+    pub receiver_lifetime: Duration,
+    /// A flag determining if the receiver should deliver pieces that it receives.
+    pub deliver: bool,
     /// A flag that indicates if the application should run or terminate.
     pub running: Arc<AtomicBool>,
     /// An alternative output destination instead of a network (useful for testing).
@@ -51,10 +57,10 @@ pub struct Receiver<Signer: FtsSchemeTrait> {
 impl<Signer: FtsSchemeTrait> Receiver<Signer> {
     pub fn new(mut params: ReceiverParams) -> Self {
         let block_signer_params = BlockSignerParams {
-            seed: 0,
+            seed: 0, //< Not used
             id_filename: params.id_filename.clone(),
             target_petname: params.target_name.clone(),
-            pre_cert: None,
+            pre_cert: None,    //< Not used
             max_piece_size: 0, //< Not used
             key_charges: None, //< Not used
             key_dist: vec![],  //< Not used
@@ -65,8 +71,14 @@ impl<Signer: FtsSchemeTrait> Receiver<Signer> {
             heartbeat_period: params.heartbeat_period,
             running: params.running.clone(),
             frag_timeout: params.frag_timeout,
+            deliver: params.deliver,
+            distribute: params.distribute.clone(),
+            dgram_delay: params.dgram_delay,
+            receiver_lifetime: params.receiver_lifetime,
             alt_input: params.alt_input.take(),
         };
+
+        info!(tag: "receiver", "Running receiver with params: {:#?}.\n\nkey_charges, pre_cert, key_dist are ignored if loaded from existing identity", params);
 
         let running_clone = params.running.clone();
 

@@ -434,6 +434,7 @@ mod tests {
     // --- Random generators ---
     /// A seedable CSPRNG used for number generation
     type CsPrng = ChaCha20Rng;
+    const KEY_CHARGES: usize = 10;
 
     // --- Hash functions ---
     type TreeHashFn = Sha3_512;
@@ -444,7 +445,7 @@ mod tests {
     const T: usize = 2_usize.pow(TAU as u32);
     const N: usize = (K * TAU) / 8;
 
-    type Signer = HorstSigScheme<N, K, TAU, TAUPLUS, T, CsPrng, TreeHashFn>;
+    type Signer = HorstSigScheme<N, K, TAU, TAUPLUS, T, KEY_CHARGES, CsPrng, TreeHashFn>;
 
     type Signature = HorstSignature<N, K, TAUPLUS>;
 

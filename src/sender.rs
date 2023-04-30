@@ -73,6 +73,8 @@ impl<Signer: FtsSchemeTrait> Sender<Signer> {
         };
         let net_sender = NetSender::new(net_sender_params);
 
+        info!(tag: "sender", "Running sender with params: {:#?}.\n\nkey_charges, pre_cert, key_dist are ignored if loaded from existing identity", params);
+
         Sender {
             params,
             signer,

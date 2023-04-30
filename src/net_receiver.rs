@@ -25,6 +25,7 @@ use tokio::time::{sleep, Duration};
 // ---
 use crate::buffer_tracker::BufferTracker;
 use crate::common::{Error, Fragment, FragmentId, FragmentOffset};
+use crate::net_sender::{NetSender, NetSenderParams};
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
@@ -212,6 +213,10 @@ pub struct NetReceiverParams {
     pub heartbeat_period: Duration,
     pub running: Arc<AtomicBool>,
     pub frag_timeout: Duration,
+    pub distribute: Option<String>,
+    pub deliver: bool,
+    pub receiver_lifetime: Duration,
+    pub dgram_delay: Duration,
     /// An alternative output destination instead of network.
     pub alt_input: Option<std::sync::mpsc::Receiver<Vec<u8>>>,
 }
@@ -242,13 +247,31 @@ impl NetReceiver {
 
         info!(tag: "receiver", "The receiver thread is bound at '{}'...", socket.local_addr().unwrap());
 
-        // Spawn the task that will send periodic hearbeats to the sender
+        // Spawn the task that will send periodic heartbeats to the sender
         rt.spawn(Self::heartbeat_task(
             params.addr.clone(),
             params.running.clone(),
             params.heartbeat_period,
             socket.clone(),
         ));
+
+        // Spawn network sender if should run as a distributor
+        let mut net_sender = if let Some(distr_addr) = &params.distribute {
+            let net_sender_params = NetSenderParams {
+                addr: distr_addr.clone(),
+                running: params.running.clone(),
+                subscriber_lifetime: params.receiver_lifetime,
+                datagram_size: 0,  //< Not relevant for distributor
+                max_piece_size: 0, //< Not relevant for distributor
+                dgram_delay: params.dgram_delay,
+                alt_output: None, //< Not relevant for distributor
+            };
+            Some(NetSender::new(net_sender_params))
+        } else {
+            None
+        };
+
+        info!(tag: "receiver", "params.distribute: {:?}", params.distribute);
 
         // Create a channel
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
@@ -290,11 +313,21 @@ impl NetReceiver {
                 };
 
                 // Copy the actual bytes to the resulting vector
-                let mut dgram = vec![0; recv];
-                dgram.copy_from_slice(&buf[..recv]);
+                let mut frag = vec![0; recv];
+                frag.copy_from_slice(&buf[..recv]);
 
-                if let Err(e) = tx.send(dgram) {
-                    warn!(tag: "receiver", "Failed to send to the queue! ERROR: {e}");
+                // If the receiver is set to distribute the data, do it
+                if let Some(sender) = &mut net_sender {
+                    if let Err(e) = sender.broadcast_fragment(&frag) {
+                        warn!(tag: "receiver", "Failed to distribute fragment! ERROR: {e:?}");
+                    }
+                }
+
+                // If the receiver is set to deliver the data, do it
+                if params.deliver {
+                    if let Err(e) = tx.send(frag) {
+                        warn!(tag: "receiver", "Failed to send to the queue! ERROR: {e}");
+                    }
                 }
             }
         });

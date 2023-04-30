@@ -79,7 +79,7 @@ impl NetSender {
             params.running.clone(),
             subscribers.clone(),
             params.subscriber_lifetime.as_millis(),
-            params.datagram_size * 2,
+            2, //< We expect 2 byte magics
         ));
 
         let dgram_delay = params.dgram_delay;
@@ -228,7 +228,7 @@ impl NetSender {
                     if let Err(e) = alt_tx.send(dgram.clone()) {
                         warn!(tag: "sender", "Failed to send datagram to the alternative output! ERROR: {}!",e);
                     }
-                    std::thread::sleep(Duration::from_micros(10));
+                    std::thread::sleep(self.params.dgram_delay);
                 }
             }
             // Else use the network as an output
@@ -266,6 +266,47 @@ impl NetSender {
                     self.subscribers.remove(&dead_sub);
                     debug!(tag:"sender", "Deleted the dead subscriber '{dead_sub}'.");
                 }
+            }
+
+            Ok(())
+        }
+    }
+
+    ///
+    /// Broadcasts the provided fragment to active receivers as is (i.e. no further fragmentation or
+    /// checks).
+    ///
+    pub fn broadcast_fragment(&mut self, data: &[u8]) -> Result<(), NetSenderError> {
+        {
+            let mut dead_subs = vec![];
+            {
+                let subs_guard = self.subscribers.0.lock().expect("Should be lockable!");
+
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Should be positive.")
+                    .as_millis();
+                for (dest_sock_addr, valid_until) in subs_guard.iter() {
+                    // If the subscriber is dead already
+                    if *valid_until < now {
+                        dead_subs.push(*dest_sock_addr);
+                        continue;
+                    }
+
+                    if let Err(e) = self
+                        .rt
+                        .block_on(self.sender_socket.send_to(data, *dest_sock_addr))
+                    {
+                        warn!(tag: "sender", "Failed to send datagram to '{dest_sock_addr:?}'! ERROR: {e}");
+                    };
+                    std::thread::sleep(self.dgram_delay);
+                }
+            }
+
+            // Remove dead subscribers
+            for dead_sub in dead_subs {
+                self.subscribers.remove(&dead_sub);
+                debug!(tag:"sender", "Deleted the dead subscriber '{dead_sub}'.");
             }
 
             Ok(())

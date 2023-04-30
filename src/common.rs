@@ -175,6 +175,7 @@ impl SenderIdentity {
     }
 }
 
+#[derive(Debug)]
 pub struct ReceivedMessage {
     pub message: Vec<u8>,
     pub authentication: MessageAuthentication,
