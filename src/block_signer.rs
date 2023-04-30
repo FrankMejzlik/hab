@@ -316,7 +316,7 @@ impl<SecretKey, PublicKey: PublicKeyBounds> KeyLayers<SecretKey, PublicKey> {
 
         let rate = self.avg_sign_rate[layer];
         if rate > 0.0 {
-			self.ready_at[layer] = (self.next_seq - 1) as f64 + rate;
+            self.ready_at[layer] = (self.next_seq - 1) as f64 + rate;
         }
 
         //
@@ -585,12 +585,12 @@ impl<Signer: FtsSchemeTrait> MessageSignerTrait for BlockSigner<Signer> {
         // We generate `cert_interval` keys backward and `cert_interval` keys forward
         let cw_size = utils::calc_cert_window(params.pre_cert.unwrap());
 
-		// Choose the source of key charges. The dynamic parameter overrides the static one.
-		let key_charges = if let Some(x) = params.key_charges {
-			x
-		} else {
-			Signer::key_charges()
-		};
+        // Choose the source of key charges. The dynamic parameter overrides the static one.
+        let key_charges = if let Some(x) = params.key_charges {
+            x
+        } else {
+            Signer::key_charges()
+        };
 
         let mut layers = KeyLayers::new(
             num_layers,

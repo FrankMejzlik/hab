@@ -31,8 +31,10 @@ pub struct ReceiverParams {
     pub target_addr: String,
     /// The name of the target sender (the petname).
     pub target_name: String,
-    /// Period for sending heartbeats to the target sender.
+    /// A period for sending heartbeats to the target sender.
     pub heartbeat_period: Duration,
+    /// A timeout after the unfinished pieces are discarded.
+    pub frag_timeout: Duration,
     /// A flag that indicates if the application should run or terminate.
     pub running: Arc<AtomicBool>,
     /// An alternative output destination instead of a network (useful for testing).
@@ -54,7 +56,7 @@ impl<Signer: FtsSchemeTrait> Receiver<Signer> {
             target_petname: params.target_name.clone(),
             pre_cert: None,
             max_piece_size: 0, //< Not used
-            key_charges: None,   //< Not used
+            key_charges: None, //< Not used
             key_dist: vec![],  //< Not used
         };
 
@@ -62,6 +64,7 @@ impl<Signer: FtsSchemeTrait> Receiver<Signer> {
             addr: params.target_addr.clone(),
             heartbeat_period: params.heartbeat_period,
             running: params.running.clone(),
+            frag_timeout: params.frag_timeout,
             alt_input: params.alt_input.take(),
         };
 

@@ -78,6 +78,7 @@ pub fn parse_fragment(data: &[u8]) -> Result<Fragment, Error> {
 pub struct FragmentedBlock {
     data: Option<Vec<u8>>,
     buffer_tracker: BufferTracker,
+    alive_until: SystemTime,
 }
 impl fmt::Display for FragmentedBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -86,11 +87,15 @@ impl fmt::Display for FragmentedBlock {
 }
 
 impl FragmentedBlock {
-    pub fn new() -> Self {
+    pub fn new(frag_timeout: Duration) -> Self {
         FragmentedBlock {
             data: Some(vec![]),
             buffer_tracker: BufferTracker::new(),
+            alive_until: SystemTime::now() + frag_timeout,
         }
+    }
+    pub fn is_alive(&self) -> bool {
+        self.alive_until >= SystemTime::now()
     }
 
     pub fn insert(&mut self, fragment: Fragment) -> Option<Vec<u8>> {
@@ -122,6 +127,8 @@ impl FragmentedBlock {
 #[derive(Debug)]
 pub struct FragmentedPieces {
     blocks: HashMap<FragmentId, FragmentedBlock>,
+    frag_timeout: Duration,
+    last_cleanup: SystemTime,
     // ---
     last_printed: SystemTime,
 }
@@ -139,9 +146,11 @@ impl fmt::Display for FragmentedPieces {
 }
 
 impl FragmentedPieces {
-    pub fn new() -> Self {
+    pub fn new(frag_timeout: Duration) -> Self {
         FragmentedPieces {
             blocks: HashMap::new(),
+            frag_timeout,
+            last_cleanup: SystemTime::now(),
             last_printed: SystemTime::now(),
         }
     }
@@ -160,7 +169,7 @@ impl FragmentedPieces {
         let record = self
             .blocks
             .entry(fragment_id)
-            .or_insert_with(|| FragmentedBlock::new());
+            .or_insert_with(|| FragmentedBlock::new(self.frag_timeout));
 
         let res = match record.insert(fragment) {
             Some(x) => {
@@ -170,6 +179,25 @@ impl FragmentedPieces {
             None => None,
         };
 
+        // Cleanup the old records with the configured minimal interval
+        if SystemTime::now() > self.last_cleanup + self.frag_timeout {
+            let mut keys_to_remove = vec![];
+
+            for (k, v) in self.blocks.iter() {
+                if !v.is_alive() {
+                    keys_to_remove.push(*k);
+                }
+            }
+
+            // Remove the keys that are not alive anymore
+            for k in keys_to_remove {
+                self.blocks.remove(&k);
+            }
+
+            self.last_cleanup = SystemTime::now();
+        }
+
+        // Print the state with the minimum interval
         if SystemTime::now() > self.last_printed + Duration::from_secs(1) {
             debug!(tag: "fragmented_blocks", "\n{}", self);
             self.last_printed = SystemTime::now();
@@ -183,6 +211,7 @@ pub struct NetReceiverParams {
     pub addr: String,
     pub heartbeat_period: Duration,
     pub running: Arc<AtomicBool>,
+    pub frag_timeout: Duration,
     /// An alternative output destination instead of network.
     pub alt_input: Option<std::sync::mpsc::Receiver<Vec<u8>>>,
 }
@@ -202,7 +231,6 @@ pub struct NetReceiver {
 }
 
 impl NetReceiver {
-    #[allow(dead_code)]
     pub fn new(mut params: NetReceiverParams) -> Self {
         let rt = Runtime::new().expect("Failed to allocate the new task runtime!");
 
@@ -230,7 +258,7 @@ impl NetReceiver {
         std::thread::spawn(move || {
             let mut buf = vec![0; buff_size];
             loop {
-                // If the alternative reciever is set
+                // If the alternative receiver is set
                 let recv = if let Some(alt_rx) = &mut alt_dgram_receiver {
                     match alt_rx.recv() {
                         Ok(recv_data) => {
@@ -271,10 +299,11 @@ impl NetReceiver {
             }
         });
 
+        let blocks = FragmentedPieces::new(params.frag_timeout);
         NetReceiver {
             params,
             rt,
-            blocks: FragmentedPieces::new(),
+            blocks,
             rx,
         }
     }

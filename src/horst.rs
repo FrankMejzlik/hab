@@ -256,7 +256,7 @@ pub struct HorstSigScheme<
     const TAU: usize,
     const TAUPLUS: usize,
     const T: usize,
-	const KEY_CHARGES: usize,
+    const KEY_CHARGES: usize,
     CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned,
     TreeHashFn: Digest,
 > {
@@ -270,7 +270,7 @@ impl<
         const TAU: usize,
         const TAUPLUS: usize,
         const T: usize,
-		const KEY_CHARGES: usize,
+        const KEY_CHARGES: usize,
         CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned,
         TreeHashFn: Digest,
     > HorstSigScheme<N, K, TAU, TAUPLUS, T, KEY_CHARGES, CsPrng, TreeHashFn>
@@ -283,12 +283,12 @@ impl<
         const TAU: usize,
         const TAUPLUS: usize,
         const T: usize,
-		const KEY_CHARGES: usize,
-        CsPrng: CryptoRng + SeedableRng + RngCore  + Serialize + DeserializeOwned,
+        const KEY_CHARGES: usize,
+        CsPrng: CryptoRng + SeedableRng + RngCore + Serialize + DeserializeOwned,
         TreeHashFn: Digest,
     > FtsSchemeTrait for HorstSigScheme<N, K, TAU, TAUPLUS, T, KEY_CHARGES, CsPrng, TreeHashFn>
 {
-	type Error = Error;
+    type Error = Error;
     type CsPrng = CsPrng;
     type TreeHashFn = TreeHashFn;
     type SecretKey = HorstSecretKey<T, N>;
