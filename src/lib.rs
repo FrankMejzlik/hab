@@ -48,7 +48,7 @@ mod tests {
             datagram_size: 0,
             receiver_lifetime: Duration::from_secs(0),
             sender_addr: "".to_string(),
-            key_charges: Some(1),
+            key_charges: Some(3),
             dgram_delay: Duration::from_secs(0),
             running: Arc::new(AtomicBool::new(true)),
             alt_output: None,
@@ -71,9 +71,11 @@ mod tests {
 
         let mut sender = SenderSim::new(sender_params);
         let mut receiver = ReceiverSim::new(receiver_params);
-
         let signed_message = sender.broadcast(0);
         let verify_result = receiver.receive(signed_message);
+
+
+		
         println!("verify_result: {:#?}", verify_result);
 
         println!("Finished.");

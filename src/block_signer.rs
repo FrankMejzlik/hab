@@ -247,8 +247,6 @@ pub struct KeyLayers<SecretKey, PublicKey: PublicKeyBounds> {
     avg_sign_rate: Vec<f64>,
     /// True if the first sign is to come.
     first_sign: bool,
-    /// The number of signs before the layer 0 can be used again
-    until_top: usize,
     /// A sequence number of the next block to sign.
     next_seq: SeqType,
     /// A number of signatures that one keypair can generate.
@@ -269,7 +267,6 @@ impl<SecretKey, PublicKey: PublicKeyBounds> KeyLayers<SecretKey, PublicKey> {
             ready_at: vec![0.0; depth],
             avg_sign_rate,
             first_sign: true,
-            until_top: 0,
             next_seq: 0,
             key_lifetime,
             cert_window: utils::calc_cert_window(cert_interval),
