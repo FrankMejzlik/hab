@@ -78,6 +78,6 @@ fn main() {
 
     // Sender mode
     match args.bench_type {
-        BenchmarkType::ReAuthenticationTime => run_bench_reauth(args, config, running),
+        BenchmarkType::Reauth => run_bench_reauth(args, config, running),
     }
 }

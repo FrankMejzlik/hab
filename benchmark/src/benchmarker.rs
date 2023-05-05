@@ -1,17 +1,21 @@
-use hab::common::MsgVerification;
-use rand::{Rng, SeedableRng};
 use std::io::BufWriter;
 use std::io::Write;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::sync::{atomic::AtomicBool, mpsc::channel};
 use std::time::Duration;
 // ---
+use rand::Rng;
+use rand_chacha::ChaCha20Rng;
+use rand_core::SeedableRng;
+use rayon::prelude::*;
 // ---
+use hab::common::MessageAuthentication;
+use hab::utils;
+use hab::ReceiverSim;
+use hab::SenderSim;
 #[allow(unused_imports)]
 use hab::{debug, error, info, log_input, trace, warn};
-use hab::{Receiver, ReceiverParams, ReceiverTrait, Sender, SenderParams, SenderTrait};
-
-use crate::config::{self, BlockSignerInst};
+use hab::{ReceiverParams, SenderParams};
 
 #[derive(Debug)]
 pub struct BenchmarkerParams {
@@ -19,6 +23,7 @@ pub struct BenchmarkerParams {
 }
 
 pub struct Benchmarker {
+    #[allow(dead_code)]
     params: BenchmarkerParams,
 }
 
@@ -28,27 +33,10 @@ impl Benchmarker {
     }
 
     pub fn benchmark_reauth(&mut self) {
-        let running = self.params.running.clone();
-        let sender_addr = "0.0.0.0:5555".to_string();
-        let target_addr = "127.0.0.1:5555".to_string();
-        let target_name = "alice".to_string();
-        let max_delivery_deadline = Duration::from_millis(100);
-        let max_piece_size = 1024 * 1024 * 4;
-        let subscriber_lifetime = Duration::from_secs(5);
-        let id_dir = config::ID_DIR.to_string();
-        let datagram_size = 2_usize.pow(15);
-        let net_buffer_size = 2_usize.pow(16);
+        const REPS: usize = 100;
 
-        // ---
-
-        let seed_seed = 42;
-
-        let key_selection_name = "skip-exponential";
+        let key_strat_name = "exp";
         let key_dist = vec![
-            vec![65536, 100],
-            vec![16384, 0],
-            vec![8192, 0],
-            vec![4096, 0],
             vec![1024, 0],
             vec![256, 0],
             vec![64, 0],
@@ -56,121 +44,206 @@ impl Benchmarker {
             vec![4, 0],
             vec![1, 0],
         ];
-        let pre_cert = 1;
+        // let pre_certs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        // let key_chargess = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30];
 
-        const REPS: usize = 200;
-        let key_lifetimes = vec![2, 3, 4, 5, 6, 7, 8, 9, 10];
-        let mut nums_mised: Vec<usize> = (1..=10).collect();
-        let mut next: Vec<usize> = (10..=100).step_by(2).collect();
-        let mut next2: Vec<usize> = (100..=200).step_by(5).collect();
-        nums_mised.append(&mut next);
-        nums_mised.append(&mut next2);
+		let pre_certs = [6];
+        let key_chargess = [20];
 
-        const MAX_REAUTH_ITER: usize = 500;
+		// Desired probability to have the highest level keys in the identity
+		let p_w = 0.99;
+		let p_w_c = 1f64 - p_w;
 
-        let message = b"hello".to_vec();
+        let probs = utils::lifetimes_to_probs(&key_dist);
+        let prob_0 = probs[0];
+        let n_prob_90 = (p_w_c.log2() / (1.0 - prob_0).log2()).ceil() as usize;
+        println!("prob_0: {:?}", prob_0);
+        println!("iprob_0: {:?}", 1.0 / prob_0);
+        println!("n_prob_90: {:?}", n_prob_90);
+        println!("It is required to receive at least {n_prob_90} messages to have {p_w} probability of having the highest level keys in the identity...");
 
-        for key_lifetime in key_lifetimes.iter() {
-            // Open TSV file for writing per-line
-            let file = std::fs::File::create(format!("reauth_time__{key_selection_name}__{key_lifetime}.tsv")).unwrap();
-            let mut writer = BufWriter::new(file);
-            writeln!(
-                writer,
-                "key_selection\tkey_lifetime\tPC\tnum_received\tnum_missed\tnum_to_reauth"
-            )
-            .unwrap();
+        
+		// Run in parallel over the configurations
+        key_chargess.par_iter().for_each(|key_charges| {
+			pre_certs.par_iter().for_each(|pre_cert| {
+				println!("key_charges: {key_charges}, pre_cert: {pre_cert}");
 
-            // Seed an RNG with 42
-            let mut seed_rng = rand::rngs::StdRng::seed_from_u64(seed_seed);
+				// Calculate appropriate number of missed messages
+				let max_missed = (pre_cert + 1) * key_charges * 2000;
 
-            for num_miss in nums_mised.iter() {
-                let num_received = num_miss * 2;
-                let mut ress = vec![];
-                for _ in 0..REPS {
-                    // Sample from `seed_rng` to get a new seed
+				let mut nums_mised: Vec<usize> = (1..=200).collect();
+				let mut next2: Vec<usize> = (200..=2000).step_by(5).collect();
+				let mut next3: Vec<usize> = (2000..=max_missed).step_by(10).collect();
+				nums_mised.append(&mut next2);
+				nums_mised.append(&mut next3);
+
+				// Open TSV file for writing per-line
+                let file = std::fs::File::create(format!(
+                    "plots/data/reauth_approx/reauth__{key_strat_name}__{key_charges}__{pre_cert}.tsv"
+                ))
+                .unwrap();
+                let mut writer = BufWriter::new(file);
+                writeln!(
+                    writer,
+                    "key_strategy\tkey_charges\tPC\tnum_received\tnum_missed\tnum_to_reauth"
+                ).unwrap();
+
+				// Compute theoretical approximation
+				let (xs, ys) = calc_reauth_times(&key_dist, *pre_cert);
+
+				for (x, y) in xs.into_iter().zip(ys.into_iter()) {
+					let x = x.round() as usize;
+					let y = y.round() as usize;
+					writeln!(writer, "{key_strat_name}\t{key_charges}\t{pre_cert}\t0\t{x}\t{y}").unwrap();
+				}
+				writer.flush().unwrap();
+
+                // Open TSV file for writing per-line
+                let file = std::fs::File::create(format!(
+                    "plots/data/reauth/reauth__{key_strat_name}__{key_charges}__{pre_cert}.tsv"
+                ))
+                .unwrap();
+                let mut writer = BufWriter::new(file);
+                writeln!(
+                    writer,
+                    "key_strategy\tkey_charges\tPC\tnum_received\tnum_missed\tnum_to_reauth"
+                )
+                .unwrap();
+
+				
+
+                // Seed the RNG
+                let mut seed_rng = ChaCha20Rng::seed_from_u64(42);
+
+                // Iterate over the number repetitions
+                for rep in 0..REPS {
+                    println!("\t\tRepetition: {rep}");
+
+                    // Seed the iteration
                     let seed = seed_rng.gen::<u64>();
 
-                    // Remove identity file
-                    let _ = std::fs::remove_file(format!("{}/.identity_sender_01", id_dir.clone()));
-                    let _ =
-                        std::fs::remove_file(format!("{}/.identity_receiver_01", id_dir.clone()));
-
-                    let (sender_output, receiver_input) = channel();
-
-                    let mut receiver: Receiver<BlockSignerInst> = Receiver::new(ReceiverParams {
-                        running: running.clone(),
-                        target_addr: target_addr.clone(),
-                        target_name: target_name.clone(),
-                        id_dir: id_dir.clone(),
-                        id_filename: ".identity_receiver_01".to_string(),
-                        datagram_size: datagram_size,
-                        net_buffer_size: net_buffer_size,
-                        key_lifetime: *key_lifetime,
-                        cert_interval: pre_cert,
-                        delivery_deadline: max_delivery_deadline,
-                        alt_input: Some(receiver_input),
-                    });
-
-                    let mut sender: Sender<BlockSignerInst> = Sender::new(SenderParams {
-                        addr: sender_addr.clone(),
-                        running: running.clone(),
+                    let sender_params = SenderParams {
+                        id_filename: String::default(),
                         seed: seed,
-                        id_dir: id_dir.clone(),
-                        id_filename: ".identity_sender_01".to_string(),
-                        datagram_size: datagram_size,
-                        net_buffer_size: net_buffer_size,
-                        subscriber_lifetime: subscriber_lifetime,
-                        key_lifetime: *key_lifetime,
-                        cert_interval: pre_cert,
-                        max_piece_size: max_piece_size,
                         key_dist: key_dist.clone(),
-                        alt_output: Some(sender_output),
-                    });
+                        pre_cert: *pre_cert,
+                        max_piece_size: 0,
+                        datagram_size: 0,
+                        receiver_lifetime: Duration::from_secs(0),
+                        sender_addr: "".to_string(),
+                        key_charges: Some(*key_charges),
+                        dgram_delay: Duration::from_secs(0),
+                        running: Arc::new(AtomicBool::new(true)),
+                        alt_output: None,
+                    };
 
-                    //
-                    // Receive `num_rec` messages
-                    //
-                    for _ in 0..num_received {
-                        sender.broadcast(message.clone()).unwrap();
-                        let received_data = receiver.receive().unwrap();
+                    let receiver_params = ReceiverParams {
+                        running: Arc::new(AtomicBool::new(true)),
+                        target_addr: "".to_string(),
+                        target_name: "alice".to_string(),
+                        id_filename: String::default(),
+                        distribute: None,
+                        heartbeat_period: Duration::from_secs(0),
+                        delivery_delay: Duration::from_secs(0),
+                        frag_timeout: Duration::from_secs(0),
+                        dgram_delay: Duration::from_secs(0),
+                        receiver_lifetime: Duration::from_secs(0),
+                        deliver: false,
+                        alt_input: None,
+                    };
 
-                        assert_eq!(
-                            message, received_data.data,
-                            "The received message is incorrect!"
-                        );
+                    let mut sender = SenderSim::new(sender_params);
+                    let mut receiver = ReceiverSim::new(receiver_params);
+
+                    // Receive until prob of having all keys is at lest 0.9
+                    for _ in 0..n_prob_90 {
+                        let signed_message = sender.broadcast(0);
+                        receiver.receive(signed_message);
                     }
 
-                    //
-                    // Miss `num_miss` messages
-                    //
-                    receiver.ignore_next(*num_miss);
-                    for _ in 0..*num_miss {
-                        sender.broadcast(message.clone()).unwrap();
-                    }
-
-                    //
-                    // Count when re-auth happens
-                    //
-                    let mut reauth_count = MAX_REAUTH_ITER;
-                    for reauth_i in 0..MAX_REAUTH_ITER {
-                        sender.broadcast(message.clone()).unwrap();
-                        let received_data = receiver.receive().unwrap();
-
-                        if let MsgVerification::Verified(_) = received_data.sender {
-                            reauth_count = reauth_i;
-                            break;
+                    // Iterate over the list of number of misses
+                    let mut prev_miss = 0;
+                    for num_miss in nums_mised.iter() {
+                        let to_miss = num_miss - prev_miss;
+                        prev_miss = *num_miss;
+                        // println!("num_miss: {num_miss}, to_miss: {to_miss}");
+                        // Miss
+                        for _ in 0..to_miss {
+                            sender.broadcast(0);
                         }
+
+                        // Take local copies with the correct number of missed messages
+                        let mut sender3 = sender.clone();
+                        let mut receiver3 = receiver.clone();
+
+                        // Try to reauthenticate
+                        let mut re_auth_at = 0;
+                        for i in 0..n_prob_90 {
+                            let signed_message = sender3.broadcast(0);
+							
+                            let verify_result = receiver3.receive(signed_message);
+
+                            match verify_result.verification {
+                                MessageAuthentication::Authenticated(_) => {
+                                    re_auth_at = i + 1;
+                                    break;
+                                }
+                                _ => (),
+                            }
+                        }
+						let re_auth_str = if re_auth_at == 0 {
+							"NA".to_string()
+						}else {
+							re_auth_at.to_string()
+						};
+                        writeln!(writer, "{key_strat_name}\t{key_charges}\t{pre_cert}\t{n_prob_90}\t{num_miss}\t{re_auth_str}").unwrap();
+
+                        // println!("{num_miss}\t{re_auth_at}");
+                        // utils::input();
                     }
-                    let re_auth_at = reauth_count + 1;
-                    ress.push(re_auth_at);
-                    writeln!(writer, "{key_selection_name}\t{key_lifetime}\t{pre_cert}\t{num_received}\t{num_miss}\t{re_auth_at}").unwrap();
+                    writer.flush().unwrap()
                 }
-                println!(
-                    "num_rec: {}; num_miss: {}; reauth_i: {:?}",
-                    num_received, num_miss, ress
-                );
-            }
-            writer.flush().unwrap()
-        }
+            });
+        });
     }
+}
+
+fn durs_to_irates(key_durs: &Vec<usize>) -> (Vec<f64>, Vec<f64>) {
+
+    // Find the maximum from key_durs
+    let max_key_dur = key_durs.iter().cloned().fold(usize::MIN, usize::max);
+
+    // Convert key durations to key probabilities
+    let key_weights: Vec<usize> = key_durs.iter().map(|&k_dur| max_key_dur / k_dur).collect();
+
+    let total_weight: f64 = key_weights.iter().sum::<usize>() as f64;
+    let key_probs: Vec<f64> = key_weights.iter().map(|&k_w| k_w as f64 / total_weight).collect();
+
+    // Convert key probabilities to key rates
+    let key_rates: Vec<f64> = key_probs.iter().map(|&k_p| 1.0 / k_p).collect();
+
+    (key_rates, key_probs)
+}
+
+fn calc_reauth_times(durss: &Vec<Vec<usize>>, pc: usize) -> (Vec<f64>, Vec<f64>) {
+	let durs: Vec<usize> = durss.iter().map(|tuple| tuple[0]).collect();
+
+    let (irates, probs) = durs_to_irates(&durs);
+
+    let mut xs = irates.into_iter().rev().collect::<Vec<f64>>();
+    xs.iter_mut().for_each(|x| *x = *x * (pc as f64 + 1.0));
+
+    let mut ys = vec![];
+    let key_probs = probs.into_iter().rev().collect::<Vec<f64>>();
+
+    for (i, _) in key_probs.iter().enumerate() {
+        let mut prob = 0.0;
+        for it in i..key_probs.len() {
+            prob += key_probs[it];
+        }
+
+        ys.push(1.0 / prob);
+    }
+
+    (xs, ys)
 }

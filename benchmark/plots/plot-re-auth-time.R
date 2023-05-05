@@ -1,60 +1,126 @@
-
 library(ggplot2)
 library(cowplot)
 library(reshape2)
 library(dplyr)
 library(stringr)
 library(gtable) # Add gtable library
-library(grid)   # Add grid library
+library(grid) # Add grid library
 
 
-max_y <- 200
+max_y <- 1500
+max_x <- 1500
+max_y <- NA
+max_x <- NA
+fsize <- 10
 
 # Get a list of file names in the directory
-#file_list <- list.files("data/", pattern = "\\.tsv$", full.names = TRUE)
+# file_list <- list.files("data/", pattern = "\\.tsv$", full.names = TRUE)
 file_list <- list(
-	"data/reauth_time/reauth_time__ksskip-exponential__pc1__kl1.tsv", 
-	"data/reauth_time/reauth_time__ksskip-exponential__pc2__kl1.tsv",
-	"data/reauth_time/reauth_time__ksskip-exponential__pc10__kl1.tsv"
-	)
+    "plots/data/reauth/reauth__exp__1__1.tsv"
+    # "plots/data/reauth/reauth__exp__1__2.tsv",
+    # "plots/data/reauth/reauth__exp__1__3.tsv"
+)
+
+file_list_approx <- list(
+    "plots/data/reauth_approx/reauth__exp__1__1.tsv"
+    # "plots/data/reauth_approx/reauth__exp__1__2.tsv",
+    # "plots/data/reauth_approx/reauth__exp__1__3.tsv"
+)
 
 
 # Create an empty plot
-line_chart <- ggplot() + theme_cowplot(font_size=16) +
-	scale_linetype_manual(values = c("solid", "dashed")) +
-  labs(	x = "Missed messages",
-		y = "Messages to re-authenticate",
-		color = "Pre-cert",
-		linetype = ""
-	) +
-	scale_x_continuous(expand = c(0, 0)) +  # Reduce space between x-axis and zero
-  	scale_y_continuous(expand = c(0, 0), limits =c(0, max_y)) +  # Reduce space between y-axis and zero
-  theme(legend.position = c(0.05, 0.97), plot.margin = margin(10, 12, 0, 0, "pt")) 
+line_chart <- ggplot() +
+    scale_linetype_manual(values = c("solid", "dashed")) +
+    labs(
+        x = "Missed messages",
+        y = "Messages to re-authenticate",
+        color = "",
+        linetype = ""
+    ) +
+	
+    coord_cartesian(xlim = c(0, max_x), ylim = c(0, max_y), expand = FALSE) +
+    scale_linetype_manual(values = c("Mean" = "solid", "Median" = "solid", "Approx" = "dashed", "Quartile" = "dotted")) +
+    theme_cowplot(font_size = fsize) +
+    theme(legend.position = c(0.05, 0.8), plot.margin = margin(10, 12, 0, 0, "pt"))
+
+
+miss_chart <- ggplot() +
+    scale_linetype_manual(values = c("solid", "dashed")) +
+    labs(
+        x = "Missed messages",
+        y = "Prob. to not re-auth",
+    ) +
+    coord_cartesian(xlim = c(0, max_x), ylim = c(0, max_y), expand = FALSE) +
+    theme_cowplot(font_size = fsize) 
 
 
 for (input_file in file_list) {
-	print(paste("Processing file:", input_file));
-	file_name <- basename(input_file)
-	pc_num <- str_extract(file_name, "(?<=pc)\\d+")
-	print(pc_num)
+    print(paste("Processing file:", input_file))
+    file_name <- basename(input_file)
+    pc_num <- str_extract(file_name, "\\d+(?=\\.)")
+    key_charges <- str_match(file_name, "(\\d+).*?(\\d+)")
+    key_charges <- key_charges[, 2]
 
-	data <- read.table(input_file, header = TRUE, sep = "\t")
-	grouped_data <- data %>% group_by(key_selection, key_lifetime, PC, num_received, num_missed) %>% summarize(median = median(num_to_reauth), q25 = quantile(num_to_reauth, 0.25), q75 = quantile(num_to_reauth, 0.75), .groups = "drop")
-	# Add a new column 'pc_num' to the grouped_data data frame
-    grouped_data$pc_num <- pc_num
 
-	line_chart <- line_chart +
-	    geom_line(data = grouped_data, aes(x = num_missed, y = median, color = factor(pc_num), linetype = "Median"), linewidth = 1) +
-		geom_line(data = grouped_data, aes(x = num_missed, y = q75, color = factor(pc_num), linetype = "Quartile"), linewidth = 0.5) +
-		geom_line(data = grouped_data, aes(x = num_missed, y = q25, color = factor(pc_num), linetype = "Quartile"), linewidth = 0.5)
+    data <- read.table(input_file, header = TRUE, sep = "\t")
+    grouped_data <- data %>%
+		group_by(key_strategy, key_charges, PC, num_received, num_missed) %>%
+		summarize(
+			median = median(num_to_reauth, na.rm = TRUE),
+			mean = mean(num_to_reauth, na.rm = TRUE),
+			q25 = quantile(num_to_reauth, 0.25, na.rm = TRUE),
+			q75 = quantile(num_to_reauth, 0.75, na.rm = TRUE),
+			miss_prob = 1 - sum(is.na(num_to_reauth)) / n(),
+			.groups = "drop"
+        )
+
+	convert_y2_to_y1 <- function(y2) {
+		max_y1 <- max(grouped_data$mean, na.rm = TRUE)
+		print(max_y1)
+		y2 * max_y1
+	}
+    
+    line_chart <- line_chart + scale_y_continuous(
+		name = "Messages to re-authenticate",
+		sec.axis = sec_axis(~ . / max(grouped_data$mean), name = "Prob. of re-authentication")
+	) +
+        geom_line(data = grouped_data, aes(x = num_missed, y = median, color = "Median"), linewidth = 0.6) +
+        #geom_line(data = grouped_data, aes(x = num_missed, y = q75, color = "Quartile"), linewidth = 0.3) +
+        #geom_line(data = grouped_data, aes(x = num_missed, y = q25, color = "Quartile"), linewidth = 0.3) +
+		geom_line(data = grouped_data, aes(x = num_missed, y = convert_y2_to_y1(miss_prob)), linewidth = 1)
 }
+
+for (input_file in file_list_approx) {
+    print(paste("Processing file:", input_file))
+    file_name <- basename(input_file)
+    pc_num <- str_extract(file_name, "\\d+(?=\\.)")
+    key_charges <- str_match(file_name, "(\\d+).*?(\\d+)")
+    key_charges <- key_charges[, 2]
+
+    data2 <- read.table(input_file, header = TRUE, sep = "\t")
+    grouped_data2 <- data2 %>%
+        group_by(key_strategy, key_charges, PC, num_received, num_missed) %>%
+        summarize(
+            median = median(num_to_reauth, na.rm = TRUE),
+            mean = mean(num_to_reauth, na.rm = TRUE),
+            q25 = quantile(num_to_reauth, 0.25, na.rm = TRUE),
+            q75 = quantile(num_to_reauth, 0.75, na.rm = TRUE),
+            .groups = "drop"
+        )
+
+    line_chart <- line_chart +
+        geom_step(data = grouped_data2, aes(x = num_missed, y = mean, color = "Approximation"), direction = "vh", linewidth = 1)
+}
+
+
 
 gt <- ggplotGrob(line_chart)
 gt$layout$clip[gt$layout$name == "axis-l"] <- "off"
-gt$grobs[[which(gt$layout$name == "axis-l")]]$children[[2]]$hjust <- -0.5
+gt$grobs[[which(gt$layout$name == "axis-l")]]$children[[2]]$hjust <- 0.5
 
 
-ggsave(paste("out/re-auth-time", ".pdf", sep=""), units='in', width=5, height=4, gt)
+ggsave(paste("plots/out/re-auth-time", ".pdf", sep = ""), units = "in", width = 5.5, height = 3, gt)
+ggsave(paste("plots/out/re-auth-time-miss", ".pdf", sep = ""), units = "in", width = 5.5, height = 3, miss_chart)
 
 
 # library(ggplot2)
@@ -119,4 +185,3 @@ ggsave(paste("out/re-auth-time", ".pdf", sep=""), units='in', width=5, height=4,
 # colnames(xx) <- c('nodes','meas','breaks','size','time')
 # xx <- round(reshape2::acast(xx, size+meas+nodes~breaks, value.var='time', fun.aggregate=mean), digits=2)
 # write.table(xx, "tab-envelopes.tex", sep=" & ", eol=" \\\\\n", quote=F)
-

@@ -12,4 +12,7 @@ env/receiver/*
 tests/env/
 plots/*
 !plots/plot-re-auth-time.R
+!plots/data/reauth/.phony
+!plots/data/reauth_approx/.phony
+!plots/out/.phony
 *.tsv

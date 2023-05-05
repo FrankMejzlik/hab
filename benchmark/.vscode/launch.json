@@ -19,7 +19,7 @@
 					"kind": "bin"
 				}
 			},
-			"args": ["re-authentication-time"],
+			"args": ["reauth"],
 			"cwd": "${workspaceFolder}"
 		}
 	]
