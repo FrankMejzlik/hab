@@ -37,6 +37,7 @@ impl Display for KeyPairStoreContSim {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct KeyLayersSim {
     /// The key containers in their layers (indices).
     data: Vec<VecDeque<KeyPairStoreContSim>>,
@@ -183,6 +184,7 @@ pub struct SignedMessageSim {
     pub signature: Vec<(u64, u8)>,
 }
 
+#[derive(Debug, Clone)]
 struct BlockSenderSim {
     #[allow(dead_code)]
     params: BlockSignerParams,
@@ -196,7 +198,6 @@ impl BlockSenderSim {
     pub fn new(params: BlockSignerParams) -> Self {
         let rng = ChaCha20Rng::seed_from_u64(params.seed);
         let cw_size = utils::calc_cert_window(params.pre_cert.unwrap());
-
         let num_layers = params.key_dist.len();
         let key_charges = params.key_charges.unwrap();
 
@@ -213,9 +214,10 @@ impl BlockSenderSim {
         for l_idx in 0..num_layers {
             // Generate the desired number of keys per layer to forward & backward certify them
             for _ in 0..cw_size {
-				layers.insert(l_idx, next_key);
-                next_key +=1;
+                layers.insert(l_idx, next_key);
+                next_key += 1;
             }
+			
         }
 
         layers.next_key = next_key;
@@ -230,12 +232,10 @@ impl BlockSenderSim {
 
     fn sign(&mut self, message: u64, seq: SeqType) -> SignedMessageSim {
         
-		println!("{}", self.layers);
-		// Select the key to sign with
+        // Select the key to sign with
         let pub_keys = self.next_key();
 
-
-		println!("{}", self.layers);
+        //println!("{}", self.layers);
         SignedMessageSim {
             message,
             seq,
@@ -248,7 +248,6 @@ impl BlockSenderSim {
         let mut sign_layer;
         loop {
             sign_layer = if self.layers.first_sign {
-                debug!(tag:"sender", "The first ever sign is using layer 0");
                 0
             } else {
                 self.distr.sample(&mut self.rng)
@@ -270,6 +269,7 @@ impl BlockSenderSim {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SenderSim {
     signer: BlockSenderSim,
 }
@@ -286,7 +286,7 @@ impl SenderSim {
         };
         let signer = BlockSenderSim::new(block_signer_params);
 
-        println!("Running simulated sender with params: {:#?}.\n\nkey_charges, pre_cert, key_dist are ignored if loaded from existing identity", params);
+        //println!("Running simulated sender with params: {:#?}.", params);
 
         SenderSim { signer }
     }

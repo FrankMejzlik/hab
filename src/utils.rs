@@ -133,6 +133,41 @@ pub fn calc_cert_window(ci: usize) -> usize {
     2 * ci + 1
 }
 
+pub fn lifetimes_to_probs(key_dist: &Vec<Vec<usize>>) -> Vec<f64> {
+    // Instantiate the probability distribution
+    let mut weights = vec![];
+    let mut percents = vec![];
+    let mut max = 0;
+    for tuple in key_dist {
+        max = max.max(tuple[0]);
+        weights.push(tuple[0]);
+        percents.push(tuple[1]);
+    }
+
+    let mut weights = weights
+        .into_iter()
+        .map(|x| (max as f64 / x as f64) / max as f64)
+        .collect::<Vec<f64>>();
+
+    let mut sum = 0.0;
+    for w in weights.iter() {
+        sum += *w;
+    }
+
+    for w in weights.iter_mut() {
+        *w = *w / sum;
+    }
+
+    let mut avg_rate = vec![];
+    for (i, w) in weights.iter().enumerate() {
+        let x = 1.0 / w;
+        let frac = percents[i] as f64 / 100 as f64;
+        avg_rate.push(x * frac);
+    }
+
+    weights
+}
+
 pub fn lifetimes_to_distr(key_dist: &Vec<Vec<usize>>) -> (DiscreteDistribution, Vec<f64>) {
     // Instantiate the probability distribution
     let mut weights = vec![];
@@ -165,7 +200,6 @@ pub fn lifetimes_to_distr(key_dist: &Vec<Vec<usize>>) -> (DiscreteDistribution, 
         avg_rate.push(x * frac);
     }
 
-    info!(tag: "sender", "weights: {:#?}, avg_rate: {:#?}", weights, avg_rate);
     (DiscreteDistribution::new(weights), avg_rate)
 }
 

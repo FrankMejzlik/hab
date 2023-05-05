@@ -16,7 +16,7 @@ use crate::traits::{IntoFromBytes, MessageSignerTrait, SenderTrait};
 #[allow(unused_imports)]
 use crate::{debug, error, info, trace, warn};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SenderParams {
     /// A filename where the identity will be serialized.
     pub id_filename: String,

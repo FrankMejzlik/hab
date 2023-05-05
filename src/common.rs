@@ -3,6 +3,7 @@
 //!
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::mem::size_of;
 use std::time::Duration;
@@ -125,7 +126,7 @@ pub struct MsgMetadata {
     pub seq: SeqType,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 /// Struct holding parameters for the sender.
 pub struct BlockSignerParams {
     pub seed: u64,
@@ -142,9 +143,9 @@ pub struct BlockSignerParams {
     pub key_charges: Option<usize>,
 }
 
-#[derive(Debug, Hash, Serialize, Deserialize, PartialOrd, Ord, Clone)]
+#[derive(Debug, Hash, Serialize, Deserialize, Clone)]
 pub struct SenderIdentity {
-    pub ids: Vec<u64>,
+    pub ids: BTreeSet<u64>,
     pub petnames: Vec<String>,
     // If true, the identity still has some nodes in the identity graph and has chance to be re-authenticated.
     pub alive: bool,
@@ -159,10 +160,24 @@ impl PartialEq for SenderIdentity {
 
 impl Eq for SenderIdentity {}
 
+impl PartialOrd for SenderIdentity {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SenderIdentity {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.ids.cmp(&other.ids)
+    }
+}
+
 impl SenderIdentity {
     pub fn new(id: SenderId, petname: String) -> Self {
+		let mut ids = BTreeSet::new();
+		ids.insert(id);
         SenderIdentity {
-            ids: vec![id],
+            ids,
             petnames: vec![petname],
             alive: false,
             cert_window: None,
@@ -493,28 +508,26 @@ macro_rules! log_graph {
         use std::process::Command;
         use std::process::Stdio;
 
-        if log::max_level() >= log::Level::Info && log::STATIC_MAX_LEVEL >= log::Level::Info {
-            let file = File::create("output.svg").unwrap();
-            let outputfile = Stdio::from(file);
+        let file = File::create("output.svg").unwrap();
+        let outputfile = Stdio::from(file);
 
-            let mut output = Command::new("echo")
-                .arg(&format!("{}", $graph))
-                .stdout(Stdio::piped())
-                .spawn()
-                .expect("failed to execute process");
+        let mut output = Command::new("echo")
+            .arg(&format!("{}", $graph))
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("failed to execute process");
 
-            let pipe = output.stdout.take().unwrap();
+        let pipe = output.stdout.take().unwrap();
 
-            let grep = Command::new("dot")
-                .arg("-T")
-                .arg("svg")
-                .stdin(pipe)
-                .stdout(outputfile)
-                .spawn()
-                .expect("failed to execute process");
+        let grep = Command::new("dot")
+            .arg("-T")
+            .arg("svg")
+            .stdin(pipe)
+            .stdout(outputfile)
+            .spawn()
+            .expect("failed to execute process");
 
-            grep.wait_with_output().expect("failed to wait on child");
-        }
+        grep.wait_with_output().expect("failed to wait on child");
     }};
 }
 
