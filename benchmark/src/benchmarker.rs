@@ -33,7 +33,7 @@ impl Benchmarker {
     }
 
     pub fn benchmark_reauth(&mut self) {
-        const REPS: usize = 100;
+        const REPS: usize = 1000;
 
 		let configs = vec![
 			("exp", vec![
