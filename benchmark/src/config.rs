@@ -59,6 +59,9 @@ pub struct Args {
     // --- optional ---
     #[clap(short, long, default_value = "config.toml")]
     pub config: String,
+
+	#[clap(short, long, action)]
+    pub real_params: bool,
 }
 
 ///

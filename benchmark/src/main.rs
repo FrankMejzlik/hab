@@ -20,11 +20,63 @@ use crate::{
     config::{Args, BenchmarkType},
 };
 
-fn run_bench_reauth(_args: Args, _file_config: FileConfig, running: Arc<AtomicBool>) {
+fn run_bench_reauth(args: Args, _file_config: FileConfig, running: Arc<AtomicBool>) {
     let mut bench = Benchmarker::new(BenchmarkerParams {
         running: running.clone(),
     });
-    bench.benchmark_reauth();
+
+    let configs = vec![
+        (
+            "exp",
+            vec![
+                vec![1024, 0],
+                vec![256, 0],
+                vec![64, 0],
+                vec![16, 0],
+                vec![4, 0],
+                vec![1, 0],
+            ],
+        ),
+        (
+            "lin",
+            vec![
+                vec![1354, 0],
+                vec![1083, 0],
+                vec![812, 0],
+                vec![542, 0],
+                vec![271, 0],
+                vec![1, 0],
+            ],
+        ),
+        (
+            "log",
+            vec![
+                vec![1360, 0],
+                vec![1357, 0],
+                vec![1344, 0],
+                vec![1286, 0],
+                vec![1040, 0],
+                vec![1, 0],
+            ],
+        ),
+    ];
+	
+    // If real-world parameters should be benchmarked (takes a long time)
+    if args.real_params {
+        println!("Running with real-world parameters...");
+        let reps = 1000;
+        let pre_certs = vec![4, 6, 8];
+        let key_chargess = vec![10, 20];
+        bench.benchmark_reauth(configs, pre_certs, key_chargess, reps);
+    }
+    // If minimal parameters should be benchmarked
+    else {
+        println!("Running with minimal parameters...");
+        let reps = 1000;
+        let pre_certs = vec![1, 2, 4];
+        let key_chargess = vec![1, 2, 4];
+        bench.benchmark_reauth(configs, pre_certs, key_chargess, reps);
+    }
 }
 
 fn init_application() -> Arc<AtomicBool> {
@@ -71,6 +123,7 @@ fn main() {
 
     // Override with cmd args
     let args = Args::parse();
+	println!("{:?}",args.real_params);
     let running = init_application();
 
     let config_str = std::fs::read_to_string(&args.config).expect("Failed to read config file");

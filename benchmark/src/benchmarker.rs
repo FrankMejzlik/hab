@@ -32,43 +32,12 @@ impl Benchmarker {
         Benchmarker { params }
     }
 
-    pub fn benchmark_reauth(&mut self) {
-        const REPS: usize = 1000;
+    pub fn benchmark_reauth(&mut self, configs: Vec<(&str, Vec<Vec<usize>>)>, pre_certs: Vec<usize>, key_chargess: Vec<usize>, reps: usize) {
 
-		let configs = vec![
-			("exp", vec![
-				vec![1024, 0],
-				vec![256, 0],
-				vec![64, 0],
-				vec![16, 0],
-				vec![4, 0],
-				vec![1, 0],
-			]),
-			("lin", vec![
-				vec![1354, 0],
-				vec![1083, 0],
-				vec![812, 0],
-				vec![542, 0],
-				vec![271, 0],
-				vec![1, 0],
-			]),
-			("log", vec![
-				vec![1360, 0],
-				vec![1357, 0],
-				vec![1344, 0],
-				vec![1286, 0],
-				vec![1040, 0],
-				vec![1, 0],
-			]),
-		];
+		
         
 		configs.par_iter().for_each(|(key_strat_name, key_dist)| {
 			
-			// let pre_certs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-			// let key_chargess = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30];
-
-			let pre_certs = [4, 6, 8];
-			let key_chargess = [10, 20];
 
 			// Desired probability to have the highest level keys in the identity
 			let p_w = 0.99;
@@ -136,7 +105,7 @@ impl Benchmarker {
 					let mut seed_rng = ChaCha20Rng::seed_from_u64(42);
 
 					// Iterate over the number repetitions
-					for rep in 0..REPS {
+					for rep in 0..reps {
 						println!("\t\tRepetition: {rep}");
 
 						// Seed the iteration
