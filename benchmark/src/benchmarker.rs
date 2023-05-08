@@ -78,7 +78,7 @@ impl Benchmarker {
 					).unwrap();
 
 					// Compute theoretical approximation
-					let (xs, ys) = calc_reauth_times(&key_dist, *pre_cert);
+					let (xs, ys) = calc_reauth_times(&key_dist, *pre_cert * *key_charges);
 
 					for (x, y) in xs.into_iter().zip(ys.into_iter()) {
 						let x = x.round() as usize;
