@@ -22,7 +22,7 @@ chart <- ggplot(data, aes(x = layer, y = irate, fill = configuration)) +
     scale_fill_manual(values = c(theme_blue, theme_green, theme_red)) +
     labs(
         x = "Key layer", 
-		y = "Inverse signing rate)",
+		y = "Inverse signing rate",
 		fill = ""
     ) + theme(legend.position = c(0.9, 0.25)) + 
     coord_flip() +

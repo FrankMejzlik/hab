@@ -15,6 +15,10 @@ max_xs <- list(1000, NA)
 
 for (max_x in max_xs) {
 	print(max_x)
+
+	if (max_x ==1000) {
+		max_y <- 500
+	}
 	files_list <- list(
 		list(paste(data_dir, "/reauth/reauth__exp__1__1.tsv", sep=""), paste(data_dir, "/reauth_approx/reauth__exp__1__1.tsv", sep="")),
 		list(paste(data_dir, "/reauth/reauth__lin__1__1.tsv", sep=""), paste(data_dir, "/reauth_approx/reauth__lin__1__1.tsv", sep="")),
@@ -80,16 +84,25 @@ for (max_x in max_xs) {
 				y2 * max_y1
 			}
 			
-			line_chart <- line_chart + scale_y_continuous(
-				name = "Messages to re-authenticate",
-				limits = c(0, max(grouped_data$mean)),
-				sec.axis = sec_axis(~ . / max(grouped_data$mean), name = "Prob. of re-authentication")
-			) +
-				geom_line(data = grouped_data, aes(x = num_missed, y = median, color = "Median"), linewidth = 0.6) +
+
+			if (max_x ==1000) {
+				line_chart <- line_chart + scale_y_continuous(
+					name = "Messages to re-authenticate",
+				)+ geom_line(data = grouped_data, aes(x = num_missed, y = median, color = "Median"), linewidth = 0.6) +
+				geom_line(data = grouped_data, aes(x = num_missed, y = q75, color = "Quartile"), linewidth = 0.4) +
+				geom_line(data = grouped_data, aes(x = num_missed, y = q25, color = "Quartile"), linewidth = 0.4) +
+				scale_color_manual(values = c("Approx. quartile" = theme_red_light, "Approx. median" = theme_red, "Median" = theme_green, "Quartile" = theme_green_light, "Prob. to re-authenticate" = "black"))
+			} else {
+				line_chart <- line_chart + scale_y_continuous(
+					name = "Messages to re-authenticate",
+					limits = c(0, max(grouped_data$mean)),
+					sec.axis = sec_axis(~ . / max(grouped_data$mean), name = "Prob. of re-authentication")
+				) + geom_line(data = grouped_data, aes(x = num_missed, y = median, color = "Median"), linewidth = 0.6) +
 				geom_line(data = grouped_data, aes(x = num_missed, y = q75, color = "Quartile"), linewidth = 0.4) +
 				geom_line(data = grouped_data, aes(x = num_missed, y = q25, color = "Quartile"), linewidth = 0.4) +
 				geom_line(data = grouped_data, aes(x = num_missed, y = convert_y2_to_y1(miss_prob), color = "Prob. to re-authenticate"), linewidth = 0.5) +
 				scale_color_manual(values = c("Approx. quartile" = theme_red_light, "Approx. median" = theme_red, "Median" = theme_green, "Quartile" = theme_green_light, "Prob. to re-authenticate" = "black"))
+			}
 		}
 
 		for (input_file in file_list_approx) {
