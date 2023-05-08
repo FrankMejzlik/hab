@@ -37,8 +37,9 @@ To re-generate data for all the visualisations related to HAB, feel free to run 
 To generate plots from all the generated data please run the following commands:
 
 ```sh
-Rscript plots/plot-pks-oh-tradeoff.R
 Rscript plots/plot-key-dist.R
+Rscript plots/plot-irates-epochs.R
+Rscript plots/plot-pks-oh-tradeoff.R
 Rscript plots/plot-re-auth-time.R
 ```
 
