@@ -471,8 +471,8 @@ impl BlockVerifierSim {
         }
     }
 
-	#[allow(dead_code)]
-	fn dump_pks(&self) -> String {
+    #[allow(dead_code)]
+    fn dump_pks(&self) -> String {
         format!(
             "{:?}",
             Dot::with_config(&self.pks.graph, &[Config::EdgeNoLabel])

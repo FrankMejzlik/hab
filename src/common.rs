@@ -174,8 +174,8 @@ impl Ord for SenderIdentity {
 
 impl SenderIdentity {
     pub fn new(id: SenderId, petname: String) -> Self {
-		let mut ids = BTreeSet::new();
-		ids.insert(id);
+        let mut ids = BTreeSet::new();
+        ids.insert(id);
         SenderIdentity {
             ids,
             petnames: vec![petname],

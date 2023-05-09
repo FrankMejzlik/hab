@@ -217,7 +217,6 @@ impl BlockSenderSim {
                 layers.insert(l_idx, next_key);
                 next_key += 1;
             }
-			
         }
 
         layers.next_key = next_key;
@@ -231,7 +230,6 @@ impl BlockSenderSim {
     }
 
     fn sign(&mut self, message: u64, seq: SeqType) -> SignedMessageSim {
-        
         // Select the key to sign with
         let pub_keys = self.next_key();
 
