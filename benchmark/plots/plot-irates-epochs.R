@@ -18,8 +18,9 @@ data <- read.table(paste(data_dir, "base_irates.tsv", sep = ""), header = TRUE, 
 # Create the stacked bar chart
 chart <- ggplot(data, aes(x = layer, y = irate, fill = configuration)) +
     theme_cowplot(font_size = fsize) +
-    geom_bar(stat = "identity", alpha = 0.5, position = "identity") +
+    geom_bar(stat = "identity", alpha = 1, position = position_dodge2(preserve = "single")) +
     scale_fill_manual(values = c(theme_blue, theme_green, theme_red)) +
+	coord_cartesian(expand = FALSE) +
     labs(
         x = "Key layer", 
 		y = "Inverse signing rate",
