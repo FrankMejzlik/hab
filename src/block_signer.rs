@@ -18,7 +18,6 @@ use crate::common::MessageAuthentication;
 use crate::common::SeqType;
 use crate::common::VerifyResult;
 use crate::constants;
-use crate::log_graph;
 use crate::traits::IntoFromBytes;
 use crate::traits::KeyPair;
 use crate::traits::PublicKeyBounds;
@@ -702,7 +701,7 @@ impl<Signer: FtsSchemeTrait> MessageVerifierTrait for BlockSigner<Signer> {
 
         let dump = new_inst.dump_pks();
         debug!(tag: "block_verifier", "{}", dump);
-        log_graph!(dump);
+        //crate::log_graph::log_graph!(dump);
         new_inst
     }
 
@@ -762,7 +761,7 @@ impl<Signer: FtsSchemeTrait> MessageVerifierTrait for BlockSigner<Signer> {
 
             let x = self.pks.insert_identity_key(new_key, &new_id);
 
-            log_graph!(self.dump_pks());
+            //crate::log_graph::log_graph!(self.dump_pks());
 
             // Insert the initial identity node that is the sig
             (new_id.clone(), Some(x))
@@ -811,7 +810,7 @@ impl<Signer: FtsSchemeTrait> MessageVerifierTrait for BlockSigner<Signer> {
 
         // Store the state to the disk
         self.store_state();
-        log_graph!(self.dump_pks());
+        //crate::log_graph::log_graph!(self.dump_pks());
 
         debug!(tag: "receiver", "Processed the message {}.", signed_block.seq);
 
