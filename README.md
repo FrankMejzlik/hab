@@ -1,13 +1,18 @@
 # HAB 
 
-Hash-based Authentication Broadcaster is a library for broadcasting and receiving authenticated data stream using a protocol built upon hash-based few-time signatures (e.g. HORST).
+> This software is a part of the Master thesis of *Frantisek Mejzlik* titled **Fast hash-based signing protocol for message stream authentication**.
 
-It's important to note that the protocol itself is independent of the few-time signature scheme used.
+**H**ash-based **A**uthentication **B**roadcaster (HAB in short) is a library for broadcasting and receiving authenticated data streams using a protocol built upon hash-based few-time signatures (e.g. [HORST](https://link.springer.com/chapter/10.1007/978-3-662-46800-5_15); the HORST scheme is also implemented and published by this crate as `HorstSigScheme`).
+
+Beware that the HORST scheme is vulnerable to adaptive chosen-message and weak-message attacks, and even if this use case does not allow the attacker to get his messages signed, it should not be used for production builds. Schemes without known vulnerabilities (e.g. [FORS](https://dl.acm.org/doi/10.1145/3319535.3363229)) should be used for production builds.
+
+It's important to note that the protocol implementation is independent of the few-time signature scheme used. One can implement a different signature scheme that implements `FtsSchemeTrait` and use it to parametrise the `Sender` and `Receiver` instances.
 
 ## **Prerequisites**
 
-* [Rust compiler](https://www.rust-lang.org/learn/get-started)
-* Dependencies - Not all used third-party dependencies may be written in pure Rust and **may** depend on some libraries that are installed in the system. These are usually easy to install using system package manager. If this is the case, the compiler will let you know what is missing.
+* **Operating system**: The crate **should** work fine on common modern Linux distributions, Windows NT systems and MacOS. Though, it was explicitly tested with Debian 11 and Windows 10/11.
+* [**Rust compiler**](https://www.rust-lang.org/learn/get-started): Version 1.58 or higher.
+* **Dependencies**: Not all used third-party crates may be written in pure Rust and may depend on some libraries (standard shared object libraries) that must be installed in the system. These are usually easy to install using the system package manager (`apt`, `yum`, ...). If so, the compiler will let you know what library is missing.
 
 ## **Compile**
 
@@ -20,11 +25,23 @@ cargo build --release
 cargo test
 ```
 
-## Examples
+## **Documentation**
+
+To see the developer documentation, run the following. The documentation will be built and shown in your default browser.
+
+```sh
+cargo doc --open
+```
+
+## **Examples**
 
 The example usage is in the separate directory [`audibro`](https://gitlab.mff.cuni.cz/mejzlikf/audibro). Head there to see how the library can be used.
 
-## License
+## **Known limitations**
+
+This crate is still in proof-of-concept state and therefore there are present some limitations.
+
+## **License**
 
 Copyright © 2023 Frantisek Mejzlik <frankmejzlik@proton.me>
 
