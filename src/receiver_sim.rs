@@ -265,7 +265,7 @@ impl PubKeyStoreSim {
 
             // Merge the identity
             let new_comp_id = if comp_ids.len() == 1 {
-                Some(comp_ids.first().expect("Should be there!").clone())
+                Some(comp_ids.iter().next().expect("Should be there!").clone())
             } else if comp_ids.len() == 2 {
                 let mut it = comp_ids.clone().into_iter();
                 let mut new_comp_id = it.next().expect("Should be there!");
