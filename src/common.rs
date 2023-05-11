@@ -51,7 +51,7 @@ pub struct Fragment {
 ///
 /// Enum describing the states of message verification that can happen.
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MessageAuthentication {
     /// The message was not send by the target identity nor by identity certified by it.
     Unverified,
