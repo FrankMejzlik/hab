@@ -22,8 +22,7 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 petgraph = { version = "0.6", features=["serde-1"] }
 
 [features]
-default = ["debug"]
-debug = []
+default = ["store_state"]
 store_state = []
 print_times = []
 log_input_output = []

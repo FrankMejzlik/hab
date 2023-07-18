@@ -8,22 +8,63 @@ Beware that the HORST scheme is vulnerable to adaptive chosen-message and weak-m
 
 It's important to note that the protocol implementation is independent of the few-time signature scheme used. One can implement a different signature scheme that implements `FtsSchemeTrait` and use it to parametrise the `Sender` and `Receiver` instances.
 
+> The crate is not yet suitable for production builds. Please see the *Limitations* section.
+
 ## **Prerequisites**
 
 * **Operating system**: The crate **should** work fine on common modern Linux distributions, Windows NT systems and MacOS. Though, it was explicitly tested with Debian 11 and Windows 10/11.
 * [**Rust compiler**](https://www.rust-lang.org/learn/get-started): Version 1.58 or higher.
 * **Dependencies**: Not all used third-party crates may be written in pure Rust and may depend on some libraries (standard shared object libraries) that must be installed in the system. These are usually easy to install using the system package manager (`apt`, `yum`, ...). If so, the compiler will let you know what library is missing.
 
-## **Compile**
+## **Build**
 
 ```sh
 # A debug build
 cargo build
 # A release build
 cargo build --release
-# Run unit tests
-cargo test
 ```
+
+## **Usage**
+To use the library, it is quite straightforward.
+
+```rs
+// BROADCASTER
+println!("Running the example broadcaster at '{}'...", params.sender_addr);
+let mut bcaster = Sender::<SignerInst>::new(params);
+loop {
+    let data = read_input();
+    if let Err(e) = bcaster.broadcast(data) {
+        eprintln!("Failed to broadcast! ERROR: {e}");
+    }
+}
+
+// RECEIVER
+```
+For more, please see the examples for [broadcaster](examples/broadcaster.rs) and [receiver](examples/receiver.rs) together with the documentation.
+
+### Implementing a custom few-time signature scheme
+
+The `Sender` and `Receiver` structs expect one generic type parameter and that is a few-time signature scheme.
+
+```rs
+struct Sender<Signer: FtsSchemeTrait> { ... }
+struct Receiver<Signer: FtsSchemeTrait> { ... }
+```
+
+So your signature scheme must implement the [`FtsScheme`](https://gitlab.mff.cuni.cz/mejzlikf/hab/-/blob/master/src/traits.rs#L125) trait. That's it! Once you have that, your signature scheme will work as a drop-in replacement for the bundled-in HORST scheme.
+
+## **Examples**
+
+```sh
+# Runs the broadcaster that broadcasts the datetime string periodically
+cargo run --example broadcaster
+# Runs the receiver that receivers the datetime broadcasted by the broadcaster above
+cargo run --example receiver
+```
+
+### Complex example
+The complex example usage is demonstrated in the separate directory [`audibro`](https://gitlab.mff.cuni.cz/mejzlikf/audibro). Please head there to see how the library can be used for real-time audio broadcasting software.
 
 ## **Documentation**
 
@@ -33,13 +74,14 @@ To see the developer documentation, run the following. The documentation will be
 cargo doc --open
 ```
 
-## **Examples**
-
-The example usage is in the separate directory [`audibro`](https://gitlab.mff.cuni.cz/mejzlikf/audibro). Head there to see how the library can be used.
-
 ## **Known limitations**
 
-This crate is still in proof-of-concept state and therefore there are present some limitations.
+This crate is still in proof-of-concept state and therefore there are some things to keep in mind when using it. 
+
+* The crate is not-optimized. It is in the state of proof-of-concept and the performance is quite poor.
+* The crate is not thoroughly tested and **is not suitable for production application**.
+
+Any collaboration and improvements are very welcome.
 
 ## **License**
 
