@@ -34,12 +34,26 @@ println!("Running the example broadcaster at '{}'...", params.sender_addr);
 let mut bcaster = Sender::<SignerInst>::new(params);
 loop {
     let data = read_input();
+    println!("SEND: |{}|", String::from_utf8_lossy(&data));
     if let Err(e) = bcaster.broadcast(data) {
         eprintln!("Failed to broadcast! ERROR: {e}");
+        continue;
     }
 }
 
 // RECEIVER
+println!("Running the example receiver that receives from '{}'...", params.target_addr);
+let mut receiver = Receiver::<SignerInst>::new(params);
+loop {
+    let msg = match receiver.receive() {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("Unable to receive! ERROR: {e}");
+            continue;
+        }
+    };
+    println!("RECV: |{:?}|{}|{}|", msg.authentication, msg.seq, String::from_utf8_lossy(&msg.message));
+}
 ```
 For more, please see the examples for [broadcaster](examples/broadcaster.rs) and [receiver](examples/receiver.rs) together with the documentation.
 
